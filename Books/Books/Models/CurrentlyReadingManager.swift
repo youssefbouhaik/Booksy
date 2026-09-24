@@ -13,7 +13,12 @@ struct ReadingProgressItem: Identifiable, Codable, Equatable {
     let cover: String
     let path: String?
     var currentChapter: Int
+    var currentSpread: Int?
     var lastReadDate: Date
+    
+    var spread: Int {
+        currentSpread ?? 1
+    }
 }
 
 class CurrentlyReadingManager: ObservableObject {
@@ -48,10 +53,19 @@ class CurrentlyReadingManager: ObservableObject {
         }
     }
     
-    func markAsReading(book: Book, chapterIndex: Int = 0) {
+    func getSavedProgress(for book: Book) -> (chapter: Int, spread: Int)? {
+        let key = book.path ?? book.title
+        if let item = progressItems.first(where: { ($0.path ?? $0.title) == key }) {
+            return (item.currentChapter, item.spread)
+        }
+        return nil
+    }
+    
+    func markAsReading(book: Book, chapterIndex: Int = 0, spreadIndex: Int = 1) {
         let key = book.path ?? book.title
         if let idx = progressItems.firstIndex(where: { ($0.path ?? $0.title) == key }) {
             progressItems[idx].currentChapter = chapterIndex
+            progressItems[idx].currentSpread = spreadIndex
             progressItems[idx].lastReadDate = Date()
             let item = progressItems.remove(at: idx)
             progressItems.insert(item, at: 0)
@@ -62,6 +76,7 @@ class CurrentlyReadingManager: ObservableObject {
                 cover: book.cover,
                 path: book.path,
                 currentChapter: chapterIndex,
+                currentSpread: spreadIndex,
                 lastReadDate: Date()
             )
             progressItems.insert(newItem, at: 0)
