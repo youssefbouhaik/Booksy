@@ -52,7 +52,6 @@ struct BookWebView: NSViewRepresentable {
     let marginScale: Double
     let columnsOption: String
     let justifyText: Bool
-    var activeSpokenSentence: String = ""
     var onMouseActivity: (() -> Void)? = nil
     var onAddAnnotation: ((String, String, String) -> Void)? = nil
     var onPromptNote: ((String) -> Void)? = nil
@@ -74,7 +73,6 @@ struct BookWebView: NSViewRepresentable {
         var lastSeekSpread: Int = 1
         var lastContentKey: String = ""
         var lastBoundsSize: CGSize = .zero
-        var lastSpokenSentence: String = ""
         
         init(_ parent: BookWebView) {
             self.parent = parent
@@ -203,17 +201,6 @@ struct BookWebView: NSViewRepresentable {
         if context.coordinator.lastBoundsSize != webView.bounds.size && webView.bounds.size.width > 50 {
             context.coordinator.lastBoundsSize = webView.bounds.size
             webView.evaluateJavaScript("if (typeof handleResize === 'function') handleResize();")
-        }
-        
-        // Live spoken sentence highlighting
-        if context.coordinator.lastSpokenSentence != activeSpokenSentence {
-            context.coordinator.lastSpokenSentence = activeSpokenSentence
-            let safeSentence = activeSpokenSentence
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "\"", with: "\\\"")
-                .replacingOccurrences(of: "\n", with: " ")
-                .replacingOccurrences(of: "\r", with: " ")
-            webView.evaluateJavaScript("highlightSpokenSentence(\"\(safeSentence)\")")
         }
         
         let savedItems: [[String: String]] = savedAnnotations.map {
@@ -528,14 +515,6 @@ struct BookWebView: NSViewRepresentable {
                 text-decoration-thickness: 2.5px;
                 cursor: pointer;
             }
-            
-            /* Live Audio-Synced Reading Highlight */
-            .booksy-reading-highlight {
-                background-color: rgba(255, 214, 10, 0.24) !important;
-                border-radius: 4px;
-                box-shadow: 0 0 0 3px rgba(255, 214, 10, 0.12);
-                transition: background-color 0.25s ease, box-shadow 0.25s ease;
-            }
         </style>
         </head>
         <body id="book-body" class="\(isEditMode ? "edit-active" : "")">
@@ -662,42 +641,6 @@ struct BookWebView: NSViewRepresentable {
                     const total = getTotalSpreads();
                     currentSpread = Math.max(0, Math.min(total - 1, target - 1));
                     updateDisplay();
-                }
-                
-                //
-                // Real-Time Audio-Synced Sentence Highlighting
-                //
-                let currentActiveSpokenEl = null;
-                function highlightSpokenSentence(sentence) {
-                    if (currentActiveSpokenEl) {
-                        currentActiveSpokenEl.classList.remove('booksy-reading-highlight');
-                        currentActiveSpokenEl = null;
-                    }
-                    if (!sentence || sentence.trim().length === 0) return;
-                    
-                    const cleanTarget = sentence.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\\s+/g, ' ').trim();
-                    if (cleanTarget.length < 4) return;
-                    const searchSample = cleanTarget.substring(0, Math.min(cleanTarget.length, 36));
-                    
-                    const allEls = columnsEl.querySelectorAll('p, blockquote, li, h1, h2, h3, h4');
-                    for (let el of allEls) {
-                        const text = (el.innerText || '').toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\\s+/g, ' ');
-                        if (text.includes(searchSample)) {
-                            el.classList.add('booksy-reading-highlight');
-                            currentActiveSpokenEl = el;
-                            
-                            // Auto-advance spread if spoken element is outside current view
-                            const rect = el.getBoundingClientRect();
-                            const viewLeft = currentSpread * getSpreadWidth();
-                            const elLeft = rect.left + viewLeft;
-                            const targetSpread = Math.floor(elLeft / getSpreadWidth());
-                            if (targetSpread >= 0 && targetSpread !== currentSpread && targetSpread < getTotalSpreads()) {
-                                currentSpread = targetSpread;
-                                updateDisplay();
-                            }
-                            break;
-                        }
-                    }
                 }
                 
                 //

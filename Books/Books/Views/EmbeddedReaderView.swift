@@ -72,7 +72,6 @@ struct EmbeddedReaderView: View {
     @State private var justifyText: Bool = true
     @State private var seekToSpread: Int = 1
     @State private var isHoveringScrubber: Bool = false
-    @State private var activeSpokenSentence: String = ""
     @State private var userRequestedStop: Bool = false
     
     // High-Precision Window & Reading Goals Focus Tracking
@@ -330,7 +329,6 @@ struct EmbeddedReaderView: View {
                     marginScale: marginScale,
                     columnsOption: columnsOption,
                     justifyText: justifyText,
-                    activeSpokenSentence: activeSpokenSentence,
                     onMouseActivity: {
                         registerMouseActivity()
                     },
@@ -1724,9 +1722,7 @@ struct EmbeddedReaderView: View {
         ]
         
         let inPipe = Pipe()
-        let outPipe = Pipe()
         task.standardInput = inPipe
-        task.standardOutput = outPipe
         
         let cacheDir = ("~/.books1_cache" as NSString).expandingTildeInPath
         try? FileManager.default.createDirectory(atPath: cacheDir, withIntermediateDirectories: true)
@@ -1736,28 +1732,9 @@ struct EmbeddedReaderView: View {
             task.standardError = fileHandle
         }
         
-        // Stream sentence-level progress events to synchronize reading highlight
-        outPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else { return }
-            let lines = output.components(separatedBy: "\n")
-            for line in lines {
-                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard trimmed.hasPrefix("{") && trimmed.hasSuffix("}"),
-                      let lineData = trimmed.data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                      let event = json["event"] as? String, event == "sentence_start",
-                      let text = json["text"] as? String else { continue }
-                DispatchQueue.main.async {
-                    self.activeSpokenSentence = text
-                }
-            }
-        }
-        
         task.terminationHandler = { proc in
             DispatchQueue.main.async {
                 self.isPlayingAudio = false
-                self.activeSpokenSentence = ""
                 
                 // Smarter chapter-boundary TTS: auto-advance across chapters without manual restart
                 if !self.userRequestedStop && proc.terminationStatus == 0 {
@@ -1766,6 +1743,9 @@ struct EmbeddedReaderView: View {
                         self.currentSpreadIndex = 1
                         self.seekToSpread = 1
                         self.currentVisibleSnippet = "__START__"
+                        if self.book.isPDF {
+                            self.targetPDFPage = self.currentChapterIndex
+                        }
                         self.loadChapter()
                         self.startAudio()
                     }
@@ -1793,7 +1773,6 @@ struct EmbeddedReaderView: View {
     func stopAudio() {
         userRequestedStop = true
         isPlayingAudio = false
-        activeSpokenSentence = ""
         if let proc = ttsProcess, proc.isRunning {
             proc.terminate()
         }
