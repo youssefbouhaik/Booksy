@@ -14,6 +14,6 @@ struct New_TrendingView: View {
     }
 }
 
-#Preview {
-    New_TrendingView()
-}
+// #Preview {
+//     New_TrendingView()
+// }

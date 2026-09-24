@@ -9,182 +9,141 @@ import SwiftUI
 
 struct BookStoreView: View {
     
+    #if canImport(UIKit)
     init() {
         UINavigationBar.appearance().largeTitleTextAttributes = [.font : UIFont(name: "Georgia-Bold", size: 34)!]
         UINavigationBar.appearance().titleTextAttributes = [.font : UIFont(name: "Georgia-Bold", size: 19)!]
     }
+    #endif
     
     @Environment(\.colorScheme) var colorScheme
     @State private var selectedBook: Book?
     
-    var bookVM = BooksViewModel()
-    
     var body: some View {
-        
         NavigationStack {
             ScrollView {
-                VStack {
-                    Divider()
-                        .frame(width: 360)
-                    
+                VStack(alignment: .leading, spacing: 28) {
+                    // Browse Sections Navigation Bar
                     NavigationLink(destination: BrowseSectionsView()) {
-                        HStack {
+                        HStack(spacing: 12) {
                             Image(systemName: "text.justifyleft")
-                                .imageScale(.large)
-                                .foregroundColor(.gray)
+                                .font(.system(size: 16))
+                                .foregroundColor(.accentColor)
                             
-                            Text("Browse Sections")
+                            Text("Browse Sections & Genres")
+                                .font(.system(size: 15, weight: .medium))
                             
                             Spacer()
                             
                             Image(systemName: "chevron.forward")
-                                .imageScale(.small)
-                                .foregroundColor(.gray)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.secondary)
                         }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Browse Sections")
-                        .accessibilityHint("Double tap to explore the browse sections")
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 5)
-                }
-                
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHGrid(rows: [GridItem(.flexible())]) {
-                        ForEach(BooksViewModel.books3) { book in
-                            Button(action: {
-                                selectedBook = book
-                            }) {
-                                NewBooksView(book3: book)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                    }
-                    .padding(.horizontal, 15)
-                    .padding(.bottom, 30)
-                }
-                .background(
-                    colorScheme == .light ?
-                    LinearGradient(
-                        gradient: Gradient(colors: [
-                            Color.white,
-                            Color.gray.opacity(0.4)
-                        ]),
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ) :
-                        LinearGradient(
-                            gradient: Gradient(colors: [
-                                Color.clear,
-                                Color.clear
-                            ]),
-                            startPoint: .top,
-                            endPoint: .bottom
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color(nsColor: .controlBackgroundColor))
                         )
-                )
-                
-                VStack {
-                    VStack (alignment: .leading) {
-                        Text ("New & Trending")
-                            .font(Font.custom("Georgia-Bold", size: 21))
-                            .accessibilityLabel("New & Trending section")
-                        
-                        Text ("Recently released and buzz-y books.")
-                            .font(.subheadline)
-                            .foregroundColor(.gray)
-                            .padding(.bottom)
-                            .accessibilityLabel("These are the Recently released and buzz-y books")
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
-                    .padding(.top, 30)
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 28)
+                    .padding(.top, 16)
                     
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHGrid(rows: [GridItem(.flexible())], spacing: 1) {
-                            ForEach(BooksViewModel.books1) { book in
-                                Button(action: {
-                                    selectedBook = book
-                                }) {
-                                    Image(book.cover)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(height: 100)
-                                        .cornerRadius(3)
-                                        .padding(.horizontal, 15)
-                                        .accessibilityLabel("Cover of \(book.title)")
-                                        .accessibilityHint("Double tap to see the details or read the book or swipe horizontally with three fingers to explore more books")
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                            }
-                        }
-                        .frame(maxHeight: 110)
-                        .padding(.bottom, 5)
+                    // Featured Books Carousel
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Featured Releases")
+                            .font(.system(size: 22, weight: .bold, design: .serif))
+                            .padding(.horizontal, 28)
                         
-                        LazyHGrid(rows: [GridItem(.flexible())], spacing: 0) {
-                            ForEach(BooksViewModel.books2) { book in
-                                Button(action: {
-                                    selectedBook = book
-                                }) {
-                                    Image(book.cover)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(height: 100)
-                                        .cornerRadius(3)
-                                        .padding(.horizontal, 15)
-                                        .accessibilityLabel("Cover of \(book.title)")
-                                        .accessibilityHint("Double tap to see the details or read the book or swipe horizontally with three fingers to explore more books")
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 20) {
+                                ForEach(BooksViewModel.books3) { book in
+                                    Button(action: {
+                                        selectedBook = book
+                                    }) {
+                                        NewBooksView(book3: book)
+                                    }
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(PlainButtonStyle())
                             }
+                            .padding(.horizontal, 28)
+                            .padding(.vertical, 4)
                         }
-                        .frame(maxHeight: 110)
                     }
-                    .padding(.bottom)
                     
-                    VStack {
-                        Divider()
-                            .frame(width: 360)
-                        
-                        Button {
-                            // No action
-                        } label: {
-                            HStack {
-                                Text("See All")
+                    Divider()
+                        .padding(.horizontal, 28)
+                    
+                    // New & Trending Shelf
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("New & Trending")
+                                    .font(.system(size: 22, weight: .bold, design: .serif))
+                                Text("Recently released and buzz-y books.")
                                     .font(.subheadline)
-                                
-                                Image(systemName: "chevron.forward")
-                                    .imageScale(.small)
-                                    .foregroundColor(.gray)
-                                
-                                Spacer()
+                                    .foregroundColor(.secondary)
                             }
-                            .accessibilityElement(children: .combine)
-                            .accessibilityLabel("See All")
-                            .accessibilityHint("Double tap to see all books")
+                            Spacer()
                         }
-                        .padding(.horizontal)
-                        .padding(.top, 10)
-                        .padding(.bottom, 40)
+                        .padding(.horizontal, 28)
+                        
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 24) {
+                                ForEach(BooksViewModel.books1) { book in
+                                    Button(action: {
+                                        selectedBook = book
+                                    }) {
+                                        BookCoverView(book: book, width: 135)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 28)
+                            .padding(.vertical, 8)
+                        }
                     }
+                    
+                    Divider()
+                        .padding(.horizontal, 28)
+                    
+                    // Bestsellers & Top Charts Shelf
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Top Charts & Bestsellers")
+                                    .font(.system(size: 22, weight: .bold, design: .serif))
+                                Text("The most popular titles this week.")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal, 28)
+                        
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 24) {
+                                ForEach(BooksViewModel.books2) { book in
+                                    Button(action: {
+                                        selectedBook = book
+                                    }) {
+                                        BookCoverView(book: book, width: 135)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 28)
+                            .padding(.vertical, 8)
+                        }
+                    }
+                    .padding(.bottom, 40)
                 }
-                .background(
-                    LinearGradient(gradient: Gradient(colors: [
-                        colorScheme == .light ? Color.white : Color.gray.opacity(0.4),
-                        colorScheme == .light ? Color.gray.opacity(0.4) : Color.black
-                    ]), startPoint: .top, endPoint: .bottom)
-                )
-                
-                .navigationTitle("Book Store")
             }
+            .navigationTitle("Book Store")
         }
         .sheet(item: $selectedBook) { selectedBook in
             BookDetailView(book: selectedBook)
         }
-    }
-}
-
-struct BookStoreView_Previews: PreviewProvider {
-    static var previews: some View {
-        BookStoreView()
     }
 }

@@ -11,10 +11,12 @@ struct BrowseSectionsView: View {
     
     @Environment(\.presentationMode) var presentationMode: Binding<PresentationMode>
     
+    #if canImport(UIKit)
     init() {
-        UINavigationBar.appearance().largeTitleTextAttributes = [.font : UIFont(name: "Georgia-Bold", size: 34)!]
-        UINavigationBar.appearance().titleTextAttributes = [.font : UIFont(name: "Georgia-Bold", size: 19)!]
-    }
+            UINavigationBar.appearance().largeTitleTextAttributes = [.font : UIFont(name: "Georgia-Bold", size: 34)!]
+            UINavigationBar.appearance().titleTextAttributes = [.font : UIFont(name: "Georgia-Bold", size: 19)!]
+        }
+#endif
     
     var viewModel = SectionsViewModel()
     
@@ -53,6 +55,21 @@ struct BrowseSectionsView: View {
                 }
             }
             .listStyle(InsetListStyle())
+#if os(macOS)
+            .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    Button(action: {
+                        self.presentationMode.wrappedValue.dismiss()
+                    }) {
+                        HStack {
+                            Image(systemName: "chevron.backward")
+                                .font(Font.system(size: 16).weight(.bold))
+                            Text("Book Store")
+                        }
+                    }
+                }
+            }
+#else
             .navigationBarBackButtonHidden(true)
             .navigationBarItems(leading:
                                     Button(action: {
@@ -67,6 +84,7 @@ struct BrowseSectionsView: View {
                 }
             }
             )
+#endif
         .navigationTitle("Browse Sections")
     }
 }

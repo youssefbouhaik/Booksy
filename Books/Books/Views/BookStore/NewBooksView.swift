@@ -8,60 +8,35 @@
 import SwiftUI
 
 struct NewBooksView: View {
-    
     var book3: Book
     
     var body: some View {
-        
-        ZStack {
-            VStack (alignment: .leading) {
-                Divider()
-                    .padding(.top, 2)
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("FEATURED NEW")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.accentColor)
                 
-                VStack (alignment: .leading) {
-                    Text("NEW")
-                        .font(.caption2)
-                        .fontWeight(.bold)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityLabel("New book")
-                    
-                    Text(book3.title)
-                        .font(Font.custom("Georgia-Bold", size: 22))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityLabel("Title: \(book3.title)")
-                    
-                    Text(book3.author)
-                        .font(Font.custom("Georgia-Normal", size: 20))
-                        .foregroundColor(.gray)
-                        .padding(.bottom)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityLabel("Author: \(book3.author)")
-                        .accessibilityHint("Double tap to see the details or read the book or swipe horizontally with three fingers to explore more books")
-                }
-                .padding(.top, 30)
+                Text(book3.title)
+                    .font(.system(size: 18, weight: .bold, design: .serif))
+                    .lineLimit(1)
                 
-                VStack {
-                    Rectangle()
-                        .fill(Color("MyColor").opacity(0.8))
-                        .cornerRadius(20)
-                        .overlay(
-                            Image(book3.cover)
-                                .resizable()
-                                .scaledToFit()
-                                .cornerRadius(4)
-                                .frame(height: 180)
-                                .accessibilityRemoveTraits(.isImage)
-                        )
-                        .frame(width: 360, height: 230)
-                }
-               .accessibilityHidden(true)
+                Text(book3.author)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(width: 280, alignment: .leading)
+            
+            ZStack {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+                    .frame(width: 280, height: 210)
+                    .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 3)
+                
+                BookCoverView(book: book3, width: 110, showTitle: false)
             }
         }
+        .frame(width: 280)
     }
-}
-
-
-#Preview {
-    let book3 = Book(title: "The True Story of Ah Q", author: "Lu Xun", cover: "ahq", categories: ["Top Charts"])
-    return NewBooksView(book3: book3)
 }

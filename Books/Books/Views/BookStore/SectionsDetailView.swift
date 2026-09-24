@@ -10,12 +10,14 @@ import SwiftUI
 struct SectionsDetailView: View {
     
     init(category: String) {
+#if canImport(UIKit)
         UILabel.appearance(whenContainedInInstancesOf: [UINavigationBar.self]).adjustsFontSizeToFitWidth = true
-        
+#endif
         self.category = category
-        
+#if canImport(UIKit)
         UINavigationBar.appearance().largeTitleTextAttributes = [.font : UIFont(name: "Georgia-Bold", size: 34)!]
         UINavigationBar.appearance().titleTextAttributes = [.font : UIFont(name: "Georgia-Bold", size: 19)!]
+#endif
     }
     
     @State private var selectedBook: Book?
@@ -38,44 +40,37 @@ struct SectionsDetailView: View {
         
         ScrollView {
             Divider()
-                .frame(width: 360)
+                .padding(.horizontal, 24)
             
             VStack (alignment: .leading) {
                 Text ("New Releases")
                     .font(Font.custom("Georgia-Bold", size: 21))
-                    .padding(.top, 30)
-                    .padding(.bottom, 20)
+                    .padding(.top, 24)
+                    .padding(.bottom, 16)
                     .accessibilityLabel("New released books")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal)
+            .padding(.horizontal, 24)
             
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHGrid(rows: [GridItem(.flexible())], spacing: 0) {
+                HStack(spacing: 24) {
                     ForEach(filteredBooks1 + filteredBooks4) { book in
                         Button(action: {
                             selectedBook = book
                         }) {
-                            Image(book.cover)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .cornerRadius(5)
-                                .frame(height: 320)
-                                .padding(.horizontal)
-                                .accessibilityLabel("Cover of \(book.title)")
-                                .accessibilityHint("Double tap to see the details or read the book or swipe horizontally with three fingers to explore more books")
+                            BookCoverView(book: book, width: 140)
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
                 }
-                .frame(maxHeight: 320)
-                
+                .padding(.horizontal, 24)
+                .padding(.vertical, 8)
             }
             .padding(.bottom, 20)
             
             VStack {
                 Divider()
-                    .frame(width: 360)
+                    .padding(.horizontal, 24)
                 
                 Button {
                     // No action
