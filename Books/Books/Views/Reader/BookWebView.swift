@@ -583,20 +583,21 @@ struct BookWebView: NSViewRepresentable {
                 function postVisibleSnippet() {
                     try {
                         var spreadWidth = getSpreadWidth();
-                        var allEls = columnsEl.querySelectorAll('p');
+                        var allEls = columnsEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, blockquote, li');
                         var snippet = '';
-                        for (var i = 0; i < allEls.length && snippet.length < 200; i++) {
+                        for (var i = 0; i < allEls.length; i++) {
                             var rect = allEls[i].getBoundingClientRect();
-                            if (rect.width > 0 && rect.left >= -10 && rect.left < spreadWidth + 10) {
+                            if (rect.width > 0 && rect.bottom > 20 && rect.top < window.innerHeight - 20 && rect.left >= -20 && rect.left < spreadWidth - 20) {
                                 var text = allEls[i].textContent || '';
-                                if (text.trim().length > 3) {
-                                    snippet += text.trim() + ' ';
+                                var trimmed = text.trim();
+                                if (trimmed.length > 5) {
+                                    snippet = trimmed;
+                                    break;
                                 }
                             }
                         }
-                        snippet = snippet.substring(0, 200).trim();
                         if (snippet.length > 0 && window.webkit && window.webkit.messageHandlers.visibleSnippet) {
-                            window.webkit.messageHandlers.visibleSnippet.postMessage(snippet);
+                            window.webkit.messageHandlers.visibleSnippet.postMessage(snippet.substring(0, 300));
                         }
                     } catch(e) {}
                 }
