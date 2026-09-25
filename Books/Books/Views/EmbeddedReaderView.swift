@@ -575,12 +575,12 @@ struct EmbeddedReaderView: View {
                                         .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
                                 )
                                 
-                                // Read Aloud (Headphones) Button Circle
+                                // Speaker Mode (Read Aloud) Button Circle
                                 AppleBooksIconButton(
-                                    systemName: isPlayingAudio ? "speaker.wave.2.fill" : "headphones",
+                                    systemName: isPlayingAudio ? "speaker.wave.3.fill" : (showFloatingAudio ? "speaker.wave.2.fill" : "speaker.wave.2"),
                                     isActive: isPlayingAudio || showFloatingAudio,
                                     activeColor: Color(red: 0.16, green: 0.50, blue: 0.98),
-                                    tooltip: isPlayingAudio ? "Audio Narration (Playing)" : "Listen (Read Aloud)"
+                                    tooltip: isPlayingAudio ? "Speaker Mode (Playing)" : "Speaker Mode (Read Aloud)"
                                 ) {
                                     withAnimation(.easeInOut(duration: 0.2)) {
                                         showFloatingAudio.toggle()
@@ -1537,6 +1537,39 @@ struct EmbeddedReaderView: View {
                     .focusEffectDisabled()
                 }
             }
+            
+            // Speaker Mode (Read Aloud) Button
+            Button(action: {
+                showAppearancePopover = false
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showFloatingAudio = true
+                }
+                if !isPlayingAudio {
+                    startAudio()
+                }
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: isPlayingAudio ? "speaker.wave.3.fill" : "speaker.wave.2")
+                        .font(.system(size: 13))
+                        .foregroundColor(isPlayingAudio ? Color(red: 0.16, green: 0.50, blue: 0.98) : .primary)
+                    Text(isPlayingAudio ? "Speaker Playing..." : "Speaker Mode (Read Aloud)")
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    if isPlayingAudio {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(red: 0.16, green: 0.50, blue: 0.98))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .padding(.horizontal, 10)
+                .background(Color.secondary.opacity(0.12))
+                .cornerRadius(10)
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
+            .focusEffectDisabled()
             
             // Customize Button with Gear Icon (Screenshot dt6lEi -> opens JQR9yt)
             Button(action: {
