@@ -94,7 +94,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if let cv = window.contentView {
                 stripFocusRings(from: cv)
             }
-            window.makeFirstResponder(nil)
         }
     }
     

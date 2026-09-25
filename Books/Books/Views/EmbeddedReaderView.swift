@@ -22,6 +22,7 @@ struct EmbeddedReaderView: View {
     @State private var chapterTitle: String = ""
     @State private var isLoading: Bool = true
     @State private var isInitialBookLoad: Bool = true
+    @State private var loadGeneration: Int = 0
     
     // Page Metrics (Parity with Screenshot DcKW6y & f27b11)
     @State private var currentSpreadIndex: Int = 1
@@ -29,6 +30,7 @@ struct EmbeddedReaderView: View {
     @State private var pagesLeftInChapter: Int = 0
     @State private var triggerNextPage: Int = 0
     @State private var triggerPrevPage: Int = 0
+    @State private var keyMonitor: Any? = nil
     
     // Popovers
     @State private var showTOCPopover: Bool = false
@@ -40,6 +42,12 @@ struct EmbeddedReaderView: View {
     @State private var showFloatingAudio: Bool = false
     @State private var targetPDFPage: Int? = nil
     @State private var pdfOutline: [PDFOutlineNode] = []
+    @AppStorage("pdfDisplayMode") private var pdfDisplayMode: String = "book" // "single", "book", "continuous"
+    @State private var pdfSidebarTab: String = "thumbnails" // "thumbnails", "outline"
+    @State private var pdfZoomInTrigger: Int = 0
+    @State private var pdfZoomOutTrigger: Int = 0
+    @State private var pdfZoomResetTrigger: Int = 0
+    @State private var activePDFView: PDFView? = nil
     
     // Accurate Table of Contents & Estimated Pages
     @State private var bookTOC: [BookTOCEntry] = []
@@ -249,6 +257,17 @@ struct EmbeddedReaderView: View {
         }
     }
     
+    var themeNSColor: NSColor {
+        switch readerTheme {
+        case "Quiet": return NSColor(srgbRed: 0.172, green: 0.172, blue: 0.180, alpha: 1.0)
+        case "Paper": return NSColor(srgbRed: 0.960, green: 0.937, blue: 0.902, alpha: 1.0)
+        case "Bold": return NSColor.black
+        case "Calm": return NSColor(srgbRed: 0.972, green: 0.937, blue: 0.894, alpha: 1.0)
+        case "Focus": return NSColor(srgbRed: 0.918, green: 0.918, blue: 0.918, alpha: 1.0)
+        default: return NSColor.white
+        }
+    }
+    
     var themeTextColor: Color {
         switch readerTheme {
         case "Quiet", "Bold": return Color(hex: "#E5E5EA")
@@ -294,17 +313,32 @@ struct EmbeddedReaderView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .transition(.opacity)
             } else if book.isPDF, let path = book.path {
-                NativePDFKitView(url: URL(fileURLWithPath: path), targetPage: $targetPDFPage, onPageChange: { cur, tot in
-                    DispatchQueue.main.async {
-                        self.currentChapterIndex = cur
-                        self.totalChapters = max(1, tot)
-                        self.updateBookmarkState()
+                NativePDFKitView(
+                    url: URL(fileURLWithPath: path),
+                    themeBackgroundColor: themeNSColor,
+                    pdfDisplayMode: pdfDisplayMode,
+                    initialPage: currentChapterIndex,
+                    targetPage: $targetPDFPage,
+                    triggerNextPage: triggerNextPage,
+                    triggerPrevPage: triggerPrevPage,
+                    zoomInTrigger: pdfZoomInTrigger,
+                    zoomOutTrigger: pdfZoomOutTrigger,
+                    zoomResetTrigger: pdfZoomResetTrigger,
+                    activePDFView: $activePDFView,
+                    onPageChange: { cur, tot in
+                        DispatchQueue.main.async {
+                            self.currentChapterIndex = cur
+                            self.totalChapters = max(1, tot)
+                            self.updateBookmarkState()
+                            CurrentlyReadingManager.shared.markAsReading(book: self.book, chapterIndex: cur, spreadIndex: 1)
+                        }
+                    },
+                    onAddAnnotation: { text, note, colorHex, pageIdx in
+                        DispatchQueue.main.async {
+                            self.addAnnotation(text: text, note: note, colorHex: colorHex)
+                        }
                     }
-                }, onAddAnnotation: { text, note, colorHex, pageIdx in
-                    DispatchQueue.main.async {
-                        self.addAnnotation(text: text, note: note, colorHex: colorHex)
-                    }
-                })
+                )
                 .ignoresSafeArea()
             } else {
                 // Full-window WebKit Page View
@@ -389,38 +423,36 @@ struct EmbeddedReaderView: View {
                 
                 // Floating Chevrons (< and >) on sides
                 HStack {
-                    Button(action: { triggerPrevPage += 1 }) {
+                    Button(action: { flipToPrevPage() }) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 24, weight: .light))
                             .foregroundColor(Color.primary.opacity(0.4))
-                            .padding(.vertical, 32)
-                            .padding(.horizontal, 10)
+                            .padding(.vertical, 44)
+                            .padding(.horizontal, 14)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .focusEffectDisabled()
                     .help("Previous Page")
-                    .keyboardShortcut(.leftArrow, modifiers: [])
                     
                     Spacer()
                     
-                    Button(action: { triggerNextPage += 1 }) {
+                    Button(action: { flipToNextPage() }) {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 24, weight: .light))
                             .foregroundColor(Color.primary.opacity(0.4))
-                            .padding(.vertical, 32)
-                            .padding(.horizontal, 10)
+                            .padding(.vertical, 44)
+                            .padding(.horizontal, 14)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .focusEffectDisabled()
                     .help("Next Page")
-                    .keyboardShortcut(.rightArrow, modifiers: [])
                 }
                 .padding(.horizontal, 4)
                 .opacity(isControlsVisible || hasActivePopover ? 1.0 : 0.0)
                 .animation(.easeInOut(duration: 0.22), value: isControlsVisible || hasActivePopover)
-                .allowsHitTesting(isControlsVisible || hasActivePopover)
+                .allowsHitTesting(true)
                 
                 // Floating Top Controls Bar (Pixel-perfect matching Screenshot NT3LMz)
                 VStack {
@@ -760,17 +792,6 @@ struct EmbeddedReaderView: View {
                     .padding(.bottom, 6)
                 }
             }
-            
-
-            
-            // Background keyboard navigation shortcuts (Arrow Up/Down, Space)
-            Group {
-                Button("") { triggerNextPage += 1 }.keyboardShortcut(.downArrow, modifiers: [])
-                Button("") { triggerPrevPage += 1 }.keyboardShortcut(.upArrow, modifiers: [])
-                Button("") { triggerNextPage += 1 }.keyboardShortcut(.space, modifiers: [])
-            }
-            .frame(width: 0, height: 0)
-            .opacity(0)
         }
         .frame(minWidth: 860, minHeight: 640)
         .onHover { isHovered in
@@ -830,6 +851,9 @@ struct EmbeddedReaderView: View {
                 self.currentChapterIndex = saved.chapter
                 self.currentSpreadIndex = saved.spread
                 self.seekToSpread = saved.spread
+                if book.isPDF {
+                    self.targetPDFPage = saved.chapter
+                }
             }
             
             if book.isPDF, let path = book.path {
@@ -844,8 +868,44 @@ struct EmbeddedReaderView: View {
                 loadChapter()
             }
             registerMouseActivity()
+            
+            // Global keyboard monitor for reliable page navigation across all focus states
+            if self.keyMonitor == nil {
+                self.keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                    if !self.showSearchPopover && !self.showAddNoteSheet && !self.showCustomizeSheet {
+                        switch event.keyCode {
+                        case 124: // Right arrow
+                            self.flipToNextPage()
+                            return nil
+                        case 123: // Left arrow
+                            self.flipToPrevPage()
+                            return nil
+                        case 49: // Space bar
+                            if event.modifierFlags.contains(.shift) {
+                                self.flipToPrevPage()
+                            } else {
+                                self.flipToNextPage()
+                            }
+                            return nil
+                        case 125, 121: // Down arrow, Page Down
+                            self.flipToNextPage()
+                            return nil
+                        case 126, 116: // Up arrow, Page Up
+                            self.flipToPrevPage()
+                            return nil
+                        default:
+                            break
+                        }
+                    }
+                    return event
+                }
+            }
         }
         .onDisappear {
+            if let monitor = self.keyMonitor {
+                NSEvent.removeMonitor(monitor)
+                self.keyMonitor = nil
+            }
             EmbeddedReaderView.killGlobalAudio()
             stopAudio()
             stopReadingTimer()
@@ -887,15 +947,29 @@ struct EmbeddedReaderView: View {
     // 1. Contents Popover (Screenshot UXX36N)
     var tocPopoverView: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Contents")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundColor(.secondary)
+            if book.isPDF {
+                Picker("", selection: $pdfSidebarTab) {
+                    Text("Thumbnails").tag("thumbnails")
+                    Text("Outline").tag("outline")
+                }
+                .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.vertical, 10)
+            } else {
+                Text("Contents")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+            }
             
             Divider()
             
-            ScrollView {
+            if book.isPDF && pdfSidebarTab == "thumbnails" {
+                PDFThumbnailSwiftUIView(pdfView: activePDFView)
+                    .frame(width: 320, height: 380)
+            } else {
+                ScrollView {
                 LazyVStack(spacing: 2) {
                     if book.isPDF {
                         if !pdfOutline.isEmpty {
@@ -1031,6 +1105,7 @@ struct EmbeddedReaderView: View {
             .frame(width: 320, height: 380)
         }
     }
+}
     
     // 2. Bookmarks Popover (Screenshot m4Tiar)
     var bookmarksPopoverView: some View {
@@ -1315,61 +1390,125 @@ struct EmbeddedReaderView: View {
     // 4. Themes & Settings Popover (Screenshot hueuX4)
     var themesAndSettingsPopoverView: some View {
         VStack(spacing: 16) {
-            Text("Themes & Settings")
+            Text(book.isPDF ? "PDF Display & Themes" : "Themes & Settings")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundColor(.secondary)
             
-            // Top Row: Smaller A, Larger A, Appearance Toggle
-            HStack(spacing: 0) {
-                Button(action: {
-                    if fontSize > 14 { fontSize -= 2 }
-                }) {
-                    Text("A")
-                        .font(.system(size: 13, weight: .medium, design: .serif))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(.plain)
-                .focusable(false)
-                .focusEffectDisabled()
-                
-                Divider().frame(height: 20)
-                
-                Button(action: {
-                    if fontSize < 32 { fontSize += 2 }
-                }) {
-                    Text("A")
-                        .font(.system(size: 18, weight: .bold, design: .serif))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(.plain)
-                .focusable(false)
-                .focusEffectDisabled()
-                
-                Divider().frame(height: 20)
-                
-                Button(action: {
-                    // Cycle day/night
-                    if readerTheme == "Original" {
-                        readerTheme = "Quiet"
-                    } else if readerTheme == "Quiet" {
-                        readerTheme = "Bold"
-                    } else {
-                        readerTheme = "Original"
+            if book.isPDF {
+                // PDF Zoom Row: Zoom Out, Reset/Fit, Zoom In
+                HStack(spacing: 0) {
+                    Button(action: {
+                        pdfZoomOutTrigger += 1
+                    }) {
+                        Image(systemName: "minus.magnifyingglass")
+                            .font(.system(size: 14))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
                     }
-                }) {
-                    Image(systemName: "circle.lefthalf.filled")
-                        .font(.system(size: 14))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+                    .buttonStyle(.plain)
+                    .focusable(false)
+                    .focusEffectDisabled()
+                    .help("Zoom Out")
+                    
+                    Divider().frame(height: 20)
+                    
+                    Button(action: {
+                        pdfZoomResetTrigger += 1
+                    }) {
+                        Text("Fit")
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.plain)
+                    .focusable(false)
+                    .focusEffectDisabled()
+                    .help("Fit to Window")
+                    
+                    Divider().frame(height: 20)
+                    
+                    Button(action: {
+                        pdfZoomInTrigger += 1
+                    }) {
+                        Image(systemName: "plus.magnifyingglass")
+                            .font(.system(size: 14))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.plain)
+                    .focusable(false)
+                    .focusEffectDisabled()
+                    .help("Zoom In")
                 }
-                .buttonStyle(.plain)
-                .focusable(false)
-                .focusEffectDisabled()
+                .background(Color.secondary.opacity(0.12))
+                .cornerRadius(10)
+                
+                // PDF Display Mode Segmented Control: Single, Book Spread, Continuous Scroll
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("PAGE LAYOUT")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.secondary)
+                    
+                    Picker("", selection: $pdfDisplayMode) {
+                        Text("Book").tag("book")
+                        Text("Single").tag("single")
+                        Text("Scroll").tag("continuous")
+                    }
+                    .pickerStyle(.segmented)
+                }
+            } else {
+                // Top Row: Smaller A, Larger A, Appearance Toggle
+                HStack(spacing: 0) {
+                    Button(action: {
+                        if fontSize > 14 { fontSize -= 2 }
+                    }) {
+                        Text("A")
+                            .font(.system(size: 13, weight: .medium, design: .serif))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.plain)
+                    .focusable(false)
+                    .focusEffectDisabled()
+                    
+                    Divider().frame(height: 20)
+                    
+                    Button(action: {
+                        if fontSize < 32 { fontSize += 2 }
+                    }) {
+                        Text("A")
+                            .font(.system(size: 18, weight: .bold, design: .serif))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.plain)
+                    .focusable(false)
+                    .focusEffectDisabled()
+                    
+                    Divider().frame(height: 20)
+                    
+                    Button(action: {
+                        // Cycle day/night
+                        if readerTheme == "Original" {
+                            readerTheme = "Quiet"
+                        } else if readerTheme == "Quiet" {
+                            readerTheme = "Bold"
+                        } else {
+                            readerTheme = "Original"
+                        }
+                    }) {
+                        Image(systemName: "circle.lefthalf.filled")
+                            .font(.system(size: 14))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.plain)
+                    .focusable(false)
+                    .focusEffectDisabled()
+                }
+                .background(Color.secondary.opacity(0.12))
+                .cornerRadius(10)
             }
-            .background(Color.secondary.opacity(0.12))
-            .cornerRadius(10)
             
             // 6 Apple Themes Grid (Screenshot hueuX4)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
@@ -1421,6 +1560,16 @@ struct EmbeddedReaderView: View {
         }
         .padding(16)
         .frame(width: 270)
+    }
+    
+    func flipToNextPage() {
+        registerMouseActivity()
+        triggerNextPage += 1
+    }
+    
+    func flipToPrevPage() {
+        registerMouseActivity()
+        triggerPrevPage += 1
     }
     
     func isBookmarkForCurrentPage(_ bm: BookmarkItem) -> Bool {
@@ -1530,6 +1679,7 @@ struct EmbeddedReaderView: View {
             p.standardOutput = pipe
             try? p.run()
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
             if let resp = try? JSONDecoder().decode(BookMetadataResponse.self, from: data) {
                 DispatchQueue.main.async {
                     self.bookTOC = resp.chapters
@@ -1545,9 +1695,9 @@ struct EmbeddedReaderView: View {
         }
     }
     
-    func loadChapter() {
+    func loadChapter(preserveAudio: Bool = false) {
         guard let path = book.path else { return }
-        stopAudio()
+        if !preserveAudio { stopAudio() }
         if book.isPDF {
             let resolved = (path as NSString).expandingTildeInPath
             if let doc = PDFDocument(url: URL(fileURLWithPath: resolved)) {
@@ -1568,7 +1718,10 @@ struct EmbeddedReaderView: View {
         if isInitialBookLoad {
             isLoading = true
         }
-        
+
+        loadGeneration += 1
+        let thisGeneration = loadGeneration
+
         DispatchQueue.global(qos: .userInitiated).async {
             let p = Process()
             p.executableURL = URL(fileURLWithPath: ScriptResolver.pythonPath)
@@ -1580,8 +1733,10 @@ struct EmbeddedReaderView: View {
             let pipe = Pipe()
             p.standardOutput = pipe
             try? p.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8) {
+            let outputData = pipe.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+
+            if let output = String(data: outputData, encoding: .utf8) {
                 var firstTextIdx = 0
                 if let ftRange = output.range(of: "FIRST_TEXT_INDEX:") {
                     let sub = output[ftRange.upperBound...]
@@ -1589,23 +1744,25 @@ struct EmbeddedReaderView: View {
                         firstTextIdx = fIdx
                     }
                 }
-                
+
                 if let countRange = output.range(of: "COUNT:") {
                     let sub = output[countRange.upperBound...]
                     if let endOfLine = sub.firstIndex(of: "\n"), let count = Int(sub[..<endOfLine].trimmingCharacters(in: .whitespaces)) {
                         DispatchQueue.main.async {
+                            guard thisGeneration == self.loadGeneration else { return }
                             self.totalChapters = max(1, count)
                             self.firstTextChapter = firstTextIdx
                         }
                     }
                 }
-                
+
                 var content = output
                 if let r = output.range(of: "CONTENT_START\n") {
                     content = String(output[r.upperBound...])
                 }
-                
+
                 DispatchQueue.main.async {
+                    guard thisGeneration == self.loadGeneration else { return }
                     self.chapterContent = content
                     self.currentSpreadIndex = 1
                     self.isLoading = false
@@ -1728,15 +1885,17 @@ struct EmbeddedReaderView: View {
         try? FileManager.default.createDirectory(atPath: cacheDir, withIntermediateDirectories: true)
         let errLogPath = cacheDir + "/tts_error.log"
         FileManager.default.createFile(atPath: errLogPath, contents: nil)
-        if let fileHandle = FileHandle(forWritingAtPath: errLogPath) {
-            task.standardError = fileHandle
+        let errHandle = FileHandle(forWritingAtPath: errLogPath)
+        if let errHandle = errHandle {
+            task.standardError = errHandle
         }
-        
+
         task.terminationHandler = { proc in
+            try? errHandle?.close()
             DispatchQueue.main.async {
                 self.isPlayingAudio = false
-                
-                // Smarter chapter-boundary TTS: auto-advance across chapters without manual restart
+
+                // Auto-advance: use preserveAudio to prevent loadChapter from killing the new TTS
                 if !self.userRequestedStop && proc.terminationStatus == 0 {
                     if self.currentChapterIndex < self.totalChapters - 1 {
                         self.currentChapterIndex += 1
@@ -1746,7 +1905,7 @@ struct EmbeddedReaderView: View {
                         if self.book.isPDF {
                             self.targetPDFPage = self.currentChapterIndex
                         }
-                        self.loadChapter()
+                        self.loadChapter(preserveAudio: true)
                         self.startAudio()
                     }
                 }

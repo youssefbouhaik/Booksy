@@ -2,7 +2,8 @@
 //  NativePDFKitView.swift
 //  Folio / Books
 //
-//  PDFKit reader view with custom right-click annotations and multi-color highlights
+//  PDFKit reader view with custom right-click annotations, multi-color highlights,
+//  theme-aware background, multi-page layout modes, zoom controls, and thumbnail sidebar.
 //
 
 import SwiftUI
@@ -145,13 +146,44 @@ class CustomPDFView: PDFView {
 
 struct NativePDFKitView: NSViewRepresentable {
     let url: URL
+    var themeBackgroundColor: NSColor = .windowBackgroundColor
+    var pdfDisplayMode: String = "book" // "single", "book", "continuous"
+    var initialPage: Int = 0
     @Binding var targetPage: Int?
+    var triggerNextPage: Int = 0
+    var triggerPrevPage: Int = 0
+    var zoomInTrigger: Int = 0
+    var zoomOutTrigger: Int = 0
+    var zoomResetTrigger: Int = 0
+    @Binding var activePDFView: PDFView?
     var onPageChange: ((Int, Int) -> Void)? = nil
     var onAddAnnotation: ((String, String, String, Int) -> Void)? = nil
     
     private var resolvedURL: URL {
         let p = (url.path as NSString).expandingTildeInPath
         return URL(fileURLWithPath: p)
+    }
+    
+    private func configureDisplayMode(on pdfView: CustomPDFView, mode: String) {
+        let targetMode: PDFDisplayMode
+        let asBook: Bool
+        switch mode {
+        case "book":
+            targetMode = .twoUp
+            asBook = true
+        case "continuous":
+            targetMode = .singlePageContinuous
+            asBook = false
+        default: // "single"
+            targetMode = .singlePage
+            asBook = false
+        }
+        if pdfView.displayMode != targetMode {
+            pdfView.displayMode = targetMode
+        }
+        if pdfView.displaysAsBook != asBook {
+            pdfView.displaysAsBook = asBook
+        }
     }
     
     func makeNSView(context: Context) -> CustomPDFView {
@@ -161,10 +193,17 @@ struct NativePDFKitView: NSViewRepresentable {
             pdfView.document = doc
         }
         pdfView.autoScales = true
-        pdfView.displayMode = .singlePageContinuous
         pdfView.displaysPageBreaks = true
-        pdfView.backgroundColor = .windowBackgroundColor
+        pdfView.backgroundColor = themeBackgroundColor
+        configureDisplayMode(on: pdfView, mode: pdfDisplayMode)
         pdfView.layoutDocumentView()
+        
+        // Restore initial reading page position
+        if initialPage > 0, let doc = pdfView.document, initialPage < doc.pageCount {
+            if let page = doc.page(at: initialPage) {
+                pdfView.go(to: page)
+            }
+        }
         
         NotificationCenter.default.addObserver(
             context.coordinator,
@@ -172,11 +211,23 @@ struct NativePDFKitView: NSViewRepresentable {
             name: .PDFViewPageChanged,
             object: pdfView
         )
+        
+        DispatchQueue.main.async {
+            self.activePDFView = pdfView
+        }
+        
         return pdfView
     }
     
     func updateNSView(_ pdfView: CustomPDFView, context: Context) {
         pdfView.onAddAnnotation = onAddAnnotation
+        
+        if pdfView.backgroundColor != themeBackgroundColor {
+            pdfView.backgroundColor = themeBackgroundColor
+        }
+        
+        configureDisplayMode(on: pdfView, mode: pdfDisplayMode)
+        
         if pdfView.document == nil || pdfView.document?.documentURL?.path != resolvedURL.path {
             if let doc = PDFDocument(url: resolvedURL) {
                 pdfView.document = doc
@@ -184,12 +235,55 @@ struct NativePDFKitView: NSViewRepresentable {
                 pdfView.layoutDocumentView()
             }
         }
+        
+        // Handle triggerNextPage
+        if triggerNextPage > context.coordinator.lastTriggerNext {
+            context.coordinator.lastTriggerNext = triggerNextPage
+            if pdfView.canGoToNextPage {
+                pdfView.goToNextPage(nil)
+            }
+        }
+        
+        // Handle triggerPrevPage
+        if triggerPrevPage > context.coordinator.lastTriggerPrev {
+            context.coordinator.lastTriggerPrev = triggerPrevPage
+            if pdfView.canGoToPreviousPage {
+                pdfView.goToPreviousPage(nil)
+            }
+        }
+        
+        // Handle Zoom In
+        if zoomInTrigger > context.coordinator.lastZoomIn {
+            context.coordinator.lastZoomIn = zoomInTrigger
+            pdfView.zoomIn(nil)
+        }
+        
+        // Handle Zoom Out
+        if zoomOutTrigger > context.coordinator.lastZoomOut {
+            context.coordinator.lastZoomOut = zoomOutTrigger
+            pdfView.zoomOut(nil)
+        }
+        
+        // Handle Zoom Reset
+        if zoomResetTrigger > context.coordinator.lastZoomReset {
+            context.coordinator.lastZoomReset = zoomResetTrigger
+            pdfView.autoScales = true
+            pdfView.scaleFactor = pdfView.scaleFactorForSizeToFit
+        }
+        
+        // Handle target page jump
         if let target = targetPage, let doc = pdfView.document, target >= 0 && target < doc.pageCount {
             if let page = doc.page(at: target), pdfView.currentPage != page {
                 pdfView.go(to: page)
             }
             DispatchQueue.main.async {
                 self.targetPage = nil
+            }
+        }
+        
+        if activePDFView !== pdfView {
+            DispatchQueue.main.async {
+                self.activePDFView = pdfView
             }
         }
     }
@@ -200,9 +294,21 @@ struct NativePDFKitView: NSViewRepresentable {
     
     class Coordinator: NSObject {
         var parent: NativePDFKitView
+        var lastTriggerNext: Int = 0
+        var lastTriggerPrev: Int = 0
+        var lastZoomIn: Int = 0
+        var lastZoomOut: Int = 0
+        var lastZoomReset: Int = 0
+        
         init(_ parent: NativePDFKitView) {
             self.parent = parent
+            self.lastTriggerNext = parent.triggerNextPage
+            self.lastTriggerPrev = parent.triggerPrevPage
+            self.lastZoomIn = parent.zoomInTrigger
+            self.lastZoomOut = parent.zoomOutTrigger
+            self.lastZoomReset = parent.zoomResetTrigger
         }
+        
         @objc func pageChanged(_ notification: Notification) {
             guard let pdfView = notification.object as? PDFView,
                   let curPage = pdfView.currentPage,
@@ -210,6 +316,28 @@ struct NativePDFKitView: NSViewRepresentable {
             let pageIndex = doc.index(for: curPage)
             let total = doc.pageCount
             parent.onPageChange?(pageIndex, total)
+        }
+    }
+}
+
+//
+//  PDFThumbnailSwiftUIView
+//  Native live page thumbnail strip matching Preview's iconic thumbnail sidebar.
+//
+struct PDFThumbnailSwiftUIView: NSViewRepresentable {
+    let pdfView: PDFView?
+    
+    func makeNSView(context: Context) -> PDFThumbnailView {
+        let thumbView = PDFThumbnailView()
+        thumbView.pdfView = pdfView
+        thumbView.thumbnailSize = NSSize(width: 130, height: 170)
+        thumbView.backgroundColor = .clear
+        return thumbView
+    }
+    
+    func updateNSView(_ thumbView: PDFThumbnailView, context: Context) {
+        if thumbView.pdfView !== pdfView {
+            thumbView.pdfView = pdfView
         }
     }
 }

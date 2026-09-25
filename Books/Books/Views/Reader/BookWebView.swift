@@ -169,6 +169,9 @@ struct BookWebView: NSViewRepresentable {
         config.userContentController = ucc
         
         let webView = BookWKWebView(frame: .zero, configuration: config)
+        if #available(macOS 13.3, *) {
+            webView.isInspectable = true
+        }
         webView.setValue(false, forKey: "drawsBackground")
         webView.postsFrameChangedNotifications = true
         context.coordinator.webView = webView
@@ -214,7 +217,7 @@ struct BookWebView: NSViewRepresentable {
             savedJSON = "[]"
         }
         
-        let contentKey = "\(chapterIndex)_\(bookPath)_\(readerTheme)_\(fontSize)_\(fontFamily)_\(isBoldText)_\(isTwoPageSpread)_\(isEditMode)_\(htmlContent.hashValue)_\(savedJSON.hashValue)_\(lineSpacing)_\(characterSpacing)_\(wordSpacing)_\(marginScale)_\(columnsOption)_\(justifyText)"
+        let contentKey = "\(chapterIndex)_\(bookPath)_\(readerTheme)_\(fontSize)_\(fontFamily)_\(isBoldText)_\(isTwoPageSpread)_\(isEditMode)_\(htmlContent.count)_\(savedJSON.count)_\(lineSpacing)_\(characterSpacing)_\(wordSpacing)_\(marginScale)_\(columnsOption)_\(justifyText)"
         guard context.coordinator.lastContentKey != contentKey else {
             return
         }
@@ -327,7 +330,7 @@ struct BookWebView: NSViewRepresentable {
                 overflow: visible;
                 position: relative;
                 will-change: transform;
-                transition: transform 0.82s cubic-bezier(0.16, 1, 0.3, 1);
+                transition: transform 0.42s cubic-bezier(0.16, 1, 0.3, 1);
             }
             /* No separation element between pages */
             body::before {
@@ -414,7 +417,7 @@ struct BookWebView: NSViewRepresentable {
                 left: 0;
                 top: 0;
                 bottom: 0;
-                width: \(marginX)px;
+                width: max(\(marginX)px, 10vw);
                 cursor: pointer;
                 z-index: 5;
             }
@@ -423,7 +426,7 @@ struct BookWebView: NSViewRepresentable {
                 right: 0;
                 top: 0;
                 bottom: 0;
-                width: \(marginX)px;
+                width: max(\(marginX)px, 10vw);
                 cursor: pointer;
                 z-index: 5;
             }
@@ -579,15 +582,13 @@ struct BookWebView: NSViewRepresentable {
                 
                 function postVisibleSnippet() {
                     try {
-                        var viewLeft = currentSpread * getSpreadWidth();
-                        var viewRight = viewLeft + getSpreadWidth();
-                        var allEls = columnsEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, blockquote, span, div');
+                        var spreadWidth = getSpreadWidth();
+                        var allEls = columnsEl.querySelectorAll('p');
                         var snippet = '';
                         for (var i = 0; i < allEls.length && snippet.length < 200; i++) {
                             var rect = allEls[i].getBoundingClientRect();
-                            var elLeft = rect.left + window.scrollX + viewLeft;
-                            if (rect.width > 0 && rect.left >= -10 && rect.left < getSpreadWidth() + 10) {
-                                var text = allEls[i].innerText || '';
+                            if (rect.width > 0 && rect.left >= -10 && rect.left < spreadWidth + 10) {
+                                var text = allEls[i].textContent || '';
                                 if (text.trim().length > 3) {
                                     snippet += text.trim() + ' ';
                                 }
@@ -612,8 +613,11 @@ struct BookWebView: NSViewRepresentable {
                     if (currentSpread < total - 1) {
                         isTurningPage = true;
                         currentSpread++;
-                        updateDisplay();
-                        setTimeout(function() { isTurningPage = false; }, 820);
+                        try {
+                            updateDisplay();
+                        } finally {
+                            setTimeout(function() { isTurningPage = false; }, 380);
+                        }
                     } else {
                         if (window.webkit && window.webkit.messageHandlers.pageNav) {
                             window.webkit.messageHandlers.pageNav.postMessage("nextChapter");
@@ -627,8 +631,11 @@ struct BookWebView: NSViewRepresentable {
                     if (currentSpread > 0) {
                         isTurningPage = true;
                         currentSpread--;
-                        updateDisplay();
-                        setTimeout(function() { isTurningPage = false; }, 820);
+                        try {
+                            updateDisplay();
+                        } finally {
+                            setTimeout(function() { isTurningPage = false; }, 380);
+                        }
                     } else {
                         if (window.webkit && window.webkit.messageHandlers.pageNav) {
                             window.webkit.messageHandlers.pageNav.postMessage("prevChapter");
@@ -993,12 +1000,11 @@ struct BookWebView: NSViewRepresentable {
                 }
                 window.addEventListener('resize', handleResize);
                 
-                if (window.ResizeObserver && columnsEl) {
+                if (window.ResizeObserver) {
                     const ro = new ResizeObserver(function() {
                         handleResize();
                     });
                     ro.observe(document.body);
-                    ro.observe(columnsEl);
                 }
                 
                 setTimeout(function() {

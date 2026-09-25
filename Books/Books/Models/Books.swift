@@ -19,7 +19,7 @@ struct Book: Identifiable, Codable {
     }
     
     var isEPUB: Bool {
-        guard let p = path else { return true }
+        guard let p = path else { return false }
         let ext = (p as NSString).pathExtension.lowercased()
         return ext == "epub" || ext == "mobi" || ext == "azw3" || ext == "kfx"
     }
