@@ -591,6 +591,34 @@ struct EmbeddedReaderView: View {
                                     .pickerStyle(.segmented)
                                     .frame(width: 175)
                                     .scaleEffect(0.9)
+                                    
+                                    // Direct Speaker Mode Button
+                                    Button(action: {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            showFloatingAudio.toggle()
+                                        }
+                                        if showFloatingAudio && !isPlayingAudio {
+                                            startAudio()
+                                        }
+                                    }) {
+                                        HStack(spacing: 5) {
+                                            Image(systemName: isPlayingAudio ? "speaker.wave.3.fill" : "speaker.wave.2")
+                                                .font(.system(size: 11, weight: .medium))
+                                            Text(isPlayingAudio ? "Playing" : "Speaker")
+                                                .font(.system(size: 11, weight: .semibold))
+                                        }
+                                        .foregroundColor(isPlayingAudio ? .white : Color(red: 0.16, green: 0.50, blue: 0.98))
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 5)
+                                        .background(
+                                            Capsule()
+                                                .fill(isPlayingAudio ? Color(red: 0.16, green: 0.50, blue: 0.98) : Color(nsColor: .windowBackgroundColor).opacity(0.85))
+                                                .background(.ultraThinMaterial, in: Capsule())
+                                                .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help(isPlayingAudio ? "Speaker Mode (Playing)" : "Speaker Mode (Read Aloud)")
                                 }
                                 
                                 Spacer()
@@ -671,7 +699,7 @@ struct EmbeddedReaderView: View {
                         }
                     }
                     .padding(.leading, 20)
-                    .padding(.trailing, 72)
+                    .padding(.trailing, 20)
                     .padding(.top, 6)
                     .opacity(isControlsVisible || hasActivePopover ? 1.0 : 0.0)
                     .animation(.easeInOut(duration: 0.22), value: isControlsVisible || hasActivePopover)
