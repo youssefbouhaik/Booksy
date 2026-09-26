@@ -1,96 +1,147 @@
-# Booksy
+# Booksy 📖✨
 
 <p align="center">
-  <strong>A TTS-native macOS books app — read and listen to anything, offline</strong>
+  <img src="assets/booksy-hero.jpg" alt="Booksy Hero Banner" width="850" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.18);" />
+</p>
+
+<p align="center">
+  <strong>A TTS-native macOS e-reader — read and listen to any book, 100% offline.</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/platform-macOS%2013%2B-blue?style=flat-square&logo=apple" alt="macOS 13+" />
+  <img src="https://img.shields.io/badge/Swift-5.9%2B-orange?style=flat-square&logo=swift" alt="Swift 5.9" />
+  <img src="https://img.shields.io/badge/TTS-Kokoro%2082M-purple?style=flat-square" alt="Kokoro TTS" />
+  <img src="https://img.shields.io/badge/NLP-Qwen%202.5-green?style=flat-square" alt="Qwen 2.5" />
+  <img src="https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square" alt="MIT License" />
 </p>
 
 ---
 
-## what is booksy
+## ⚡ Quick Download
 
-Booksy is a TTS-native books app built on top of Matthew Andrea D'Alessio's Apple Books clone. We took the Swift shell and combined it with the text-to-speech capabilities of Kokoro's e-reader engine. What came out of it is a layer that can account for intonation and subtext to provide for a seamless reading and listening experience.
+Download the native macOS installer package directly:
 
-We have explicitly removed audiobooks from this version, because we don't see a use for them anymore with the Kokoro layer — every book in your library is already an audiobook on demand.
+📦 **[Download Booksy-Installer.pkg (Latest)](Booksy-Installer.pkg)**
 
----
-
-## what we bring to the table
-
-### offline neural intonation
-A quantized Qwen 2.5 model (~800MB) lives on your laptop, fully offline, no updates needed. It handles language detection and context direction so Kokoro knows *how* to read each sentence — dialogue, narration, foreign language spans — not just what to read.
-
-### better design than Apple's
-We kept the Apple Books aesthetic that feels native to macOS but pushed it further. Dark and light modes, fluid two-page spreads, live typography preview, a proper annotation suite with highlights, underlines, and squared note cards. The customize panel gives you full control — line spacing, character spacing, word spacing, margins, columns, justify text — everything you'd want from a serious reader.
-
-### a proper annotation suite
-Floating toolbar on text selection. Five highlight colors, underline, note-taking with markdown preview, per-page bookmarks. All stored locally, no sync needed.
-
-### read from where you are
-When you hit play, Booksy reads from the page you're actually looking at, not from the beginning of the chapter. It extracts visible text from the current spread and tells Kokoro to pick up right there.
-
-### want to read, fueled by gutenberg
-The "Want to Read" section is fueled by Project Gutenberg's open-source selection of books. Browse, search, and download thousands of public-domain literary classics directly into your library. No accounts, no DRM.
-
-### dynamic pagination
-Page count recalculates live as you resize the window. Estimated page numbers across the full book, multi-level table of contents with progress markers, chapter-level page tracking.
+> Double-click `Booksy-Installer.pkg` to install `Booksy.app` directly into `/Applications`. Runs natively on Apple Silicon (M1/M2/M3/M4) and Intel Macs.
 
 ---
 
-## architecture
+## 📸 App Preview
+
+<p align="center">
+  <img src="assets/booksy-reader-spread.png" alt="Booksy Two-Page Spread Reader" width="850" style="border-radius: 8px; border: 1px solid rgba(0,0,0,0.1);" />
+  <br/>
+  <em>Two-page spread with dynamic aspect ratio adaptation, floating neural audio player, and integrated Apple-grade annotation suite.</em>
+</p>
+
+---
+
+## 💡 What is Booksy?
+
+Booksy is a modern, TTS-native macOS books app. Built upon a clean Swift & AppKit foundation, it pairs an Apple Books reading experience with a local **Kokoro neural text-to-speech** pipeline and **Qwen 2.5 context director**.
+
+Traditional audiobook apps require you to buy or generate separate audio files. Booksy makes **every EPUB and PDF an audiobook on demand** — seamlessly reading aloud with expressive intonation, dialogue emotion, and language shifts while keeping your exact visual reading place pinned.
+
+---
+
+## 🌟 Key Features
+
+### 🎙️ Read From Exactly Where You Are
+When you press Play, Booksy **doesn't jump back to the chapter start**. It performs coordinate-aware layout analysis to detect the exact paragraph currently visible in the active viewport (prioritizing the left reading column and filtering out 1-line spillover fragments) and starts speaking right where your eyes are.
+
+### 🧠 Offline Neural Intonation & Context Direction
+- **Local Context Director**: A quantized Qwen 2.5 model and Lingua language detector run locally to analyze sentence structure, subtext, foreign language quotes (e.g. Italian phrases in English novels), and dialogue vs. narrative tones.
+- **Kokoro 82M Speech Engine**: Studio-grade, human-paced speech synthesis without robot voice artifacts or cloud latency.
+- **11 Expressive Voices**: Choose between `af_heart`, `am_adam`, `bf_alice`, `bm_fable`, and more with variable speed controls (0.75x to 2.0x).
+
+### 📐 Adaptive Dynamic Layout & Pagination
+- **Aspect Ratio Awareness**: Automatically collapses between an immersive 2-page spread and a clean, centered single-page layout when resizing windows or working in vertical/portrait splits.
+- **Zero Spread Bleeding**: Calculated column gaps ensure adjacent page text never leaks into margins.
+- **Live Page Recalculation**: View accurate page counts, pages left in chapter, and estimated total book progress.
+
+### 🎨 Complete Apple-Grade Reader Suite
+- **Customizable Typography**: Change fonts (Original, SF Pro, New York, Georgia, Palatino), font size, line height, letter spacing, word spacing, and text justification.
+- **Reading Themes**: Clean White, Warm Sepia, Soft Gray, and True OLED Night Mode.
+- **Rich Annotation Bar**: Select any passage to highlight in 5 pastel shades, underline, add notes, or copy clean text.
+- **Find in Page**: Instant in-book search with keyboard navigation (`Cmd+F`).
+
+### 📚 Gutenberg "Want to Read" Catalog
+Browse, search, and download thousands of public domain classics directly through Project Gutenberg & Gutendex without leaving the app.
+
+---
+
+## 🏛️ Architecture
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│                      macOS App                         │
-│       SwiftUI UI • WKWebView Reader • AppKit Core      │
+│                   Booksy macOS App                     │
+│         SwiftUI UI • AppKit Core • WKWebView Reader    │
 └───────────────────────────┬────────────────────────────┘
-                            │ Process Pipe / IPC
+                            │ Process Pipe / JSON IPC
 ┌───────────────────────────▼────────────────────────────┐
 │                    Python Subsystem                    │
-│   • speak_chapter.py   - Neural Kokoro TTS Engine      │
-│   • context_director.py - Language Detection + Routing │
-│   • epub_metadata.py   - Spine & TOC Extraction        │
-│   • read_chapter.py    - EPUB Parsing & Sanitization   │
+│   • speak_chapter.py    - Kokoro Neural TTS Synthesis  │
+│   • context_director.py - Language Detection & Routing │
+│   • epub_metadata.py    - Spine & TOC Extraction       │
+│   • read_chapter.py     - Clean Content Extraction     │
 └────────────────────────────────────────────────────────┘
 ```
 
-- **100% offline & private** — no telemetry, no accounts, zero cloud dependencies
-- **low latency** — audio streams as sentences are synthesized in the background
-- **11 Kokoro voices** — from af_heart to bm_fable, pick the voice that suits you
+- **100% Private**: No cloud telemetry, no analytics, no external servers.
+- **Instant Response**: Audio streams concurrently in chunks while speech is generated in the background.
 
 ---
 
-## installation & building
+## 🛠️ Building From Source
 
-### prerequisites
+### Prerequisites
 - macOS 13.0 (Ventura) or newer
 - Xcode Command Line Tools (`xcode-select --install`)
-- Python 3.10+ with `kokoro`, `ebooklib`, `sounddevice`, `beautifulsoup4`, `lingua`
+- Python 3.10+ (recommended in `~/aperture-epub-reader/.venv` or system path)
 
-### quick build & install
-
+### Python TTS Dependencies
 ```bash
-git clone https://github.com/booksy-app/booksy.git
-cd booksy
+pip install kokoro sounddevice beautifulsoup4 lingua-language-detector torch numpy
+```
 
-# compile native binary and package Booksy.app
+### One-Command Build & Package
+```bash
+git clone https://github.com/youssefbouhaik/Booksy.git
+cd Booksy
+
+# Make packaging script executable and build
 chmod +x package_app.sh
 ./package_app.sh
 ```
 
-The script compiles all Swift modules, constructs the `.app` bundle with UTI file associations for EPUB and PDF, signs with ad-hoc signatures, and deploys `Booksy.app` directly into `/Applications`.
+The script will:
+1. Compile all Swift modules into `Booksy_bin`.
+2. Construct the macOS bundle at `/Applications/Booksy.app`.
+3. Code-sign and attach full-bleed Finder icons.
+4. Output the standalone installer: `Booksy-Installer.pkg`.
 
 ---
 
-## acknowledgements
+## ⌨️ Keyboard Shortcuts
 
-- **Matthew Andrea D'Alessio** — foundation Swift macOS Books UI clone
-- **Kokoro TTS** — high-quality open-weight neural text-to-speech model
-- **Qwen 2.5** — language detection and context direction model
-- **Project Gutenberg & Gutendex** — open-access digital library of classic books
-- **Open Library** — bibliographic database and book cover catalog
+| Shortcut | Action |
+| :--- | :--- |
+| `Right Arrow` / `Space` / `Page Down` | Next Page / Spread |
+| `Left Arrow` / `Page Up` | Previous Page / Spread |
+| `Cmd + F` | Search within Chapter |
+| `Cmd + B` | Bookmark Current Page |
+| `Cmd + T` | Open Table of Contents |
+| `Cmd + ,` | Open Reader Theme & Typography Settings |
 
 ---
 
-## license
+## 📜 Acknowledgements & Licenses
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+- **Matthew Andrea D'Alessio** — Original Swift macOS Apple Books clone foundation.
+- **Kokoro TTS** — Lightweight open-weights neural speech synthesis model.
+- **Qwen 2.5 Team** — Language understanding and context extraction.
+- **Project Gutenberg & Gutendex** — Open public domain digital literature.
+
+This project is open-source software licensed under the **[MIT License](LICENSE)**.

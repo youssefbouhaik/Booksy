@@ -270,24 +270,57 @@ struct BookWebView: NSViewRepresentable {
             textColor = "#1C1C1E"
         }
         
-        let baseMarginX = isTwoPageSpread ? 48 : 80
+        let baseMarginX = 48
         let extraMargin = Int(Double(baseMarginX) * marginScale / 100.0 * 3.0)
-        let marginX = baseMarginX + extraMargin
-        let gapX = marginX * 2
+        let marginTwoCol = baseMarginX + extraMargin
+        let gapTwoCol = marginTwoCol * 2
+        let marginSingleCol = max(44, marginTwoCol + 20)
         let editAttr = isEditMode ? "contenteditable='true'" : "contenteditable='false'"
         
-        let effectiveColCount: Int
-        let effectiveTwoPage: Bool
+        let gapSingleCol = marginSingleCol * 2
+        let columnStyleCSS: String
         switch columnsOption {
         case "1":
-            effectiveColCount = 1
-            effectiveTwoPage = false
+            columnStyleCSS = """
+                #book-columns {
+                    column-count: 1 !important;
+                    column-width: calc(100vw - (\(marginSingleCol * 2)px)) !important;
+                    column-gap: \(gapSingleCol)px !important;
+                    padding-left: \(marginSingleCol)px !important;
+                    padding-right: \(marginSingleCol)px !important;
+                }
+            """
         case "2":
-            effectiveColCount = 2
-            effectiveTwoPage = true
-        default: // "auto"
-            effectiveColCount = isTwoPageSpread ? 2 : 1
-            effectiveTwoPage = isTwoPageSpread
+            columnStyleCSS = """
+                #book-columns {
+                    column-count: 2 !important;
+                    column-width: calc((100vw - \(gapTwoCol)px - (\(marginTwoCol * 2)px)) / 2) !important;
+                    column-gap: \(gapTwoCol)px !important;
+                    padding-left: \(marginTwoCol)px !important;
+                    padding-right: \(marginTwoCol)px !important;
+                }
+            """
+        default: // "auto" - Dynamic with window aspect ratio and width
+            columnStyleCSS = """
+                @media (min-width: 840px) and (min-aspect-ratio: 23/20) {
+                    #book-columns {
+                        column-count: 2 !important;
+                        column-width: calc((100vw - \(gapTwoCol)px - (\(marginTwoCol * 2)px)) / 2) !important;
+                        column-gap: \(gapTwoCol)px !important;
+                        padding-left: \(marginTwoCol)px !important;
+                        padding-right: \(marginTwoCol)px !important;
+                    }
+                }
+                @media (max-width: 839px), (max-aspect-ratio: 23/20) {
+                    #book-columns {
+                        column-count: 1 !important;
+                        column-width: calc(100vw - (\(marginSingleCol * 2)px)) !important;
+                        column-gap: \(gapSingleCol)px !important;
+                        padding-left: \(marginSingleCol)px !important;
+                        padding-right: \(marginSingleCol)px !important;
+                    }
+                }
+            """
         }
         
         let cssFontFamily: String
@@ -344,10 +377,8 @@ struct BookWebView: NSViewRepresentable {
                 height: 100vh;
                 max-height: 100vh;
                 box-sizing: border-box;
-                padding: 82px \(marginX)px 54px \(marginX)px;
-                column-width: \(effectiveTwoPage ? "calc((100vw - \(gapX)px - \(marginX * 2)px) / 2)" : "calc(100vw - \(marginX * 2)px)");
-                column-count: \(effectiveColCount);
-                column-gap: \(gapX)px;
+                padding-top: 82px;
+                padding-bottom: 54px;
                 column-fill: auto;
                 width: 100vw;
                 overflow: visible;
@@ -355,6 +386,7 @@ struct BookWebView: NSViewRepresentable {
                 will-change: transform;
                 transition: transform 0.42s cubic-bezier(0.16, 1, 0.3, 1);
             }
+            \(columnStyleCSS)
             /* No separation element between pages */
             body::before {
                 display: none !important;
@@ -440,7 +472,7 @@ struct BookWebView: NSViewRepresentable {
                 left: 0;
                 top: 0;
                 bottom: 0;
-                width: max(\(marginX)px, 10vw);
+                width: max(\(marginTwoCol)px, 8vw);
                 cursor: pointer;
                 z-index: 5;
             }
@@ -449,7 +481,7 @@ struct BookWebView: NSViewRepresentable {
                 right: 0;
                 top: 0;
                 bottom: 0;
-                width: max(\(marginX)px, 10vw);
+                width: max(\(marginTwoCol)px, 8vw);
                 cursor: pointer;
                 z-index: 5;
             }
@@ -633,37 +665,88 @@ struct BookWebView: NSViewRepresentable {
                     postVisibleSnippet();
                 }
                 
-                function postVisibleSnippet() {
+                function getVisibleSnippetText() {
                     try {
                         const spreadW = getSpreadWidth();
-                        const allEls = columnsEl.querySelectorAll('p, blockquote, div, h1, h2, h3, h4, h5, h6, li');
-                        let snippet = '';
+                        const winH = window.innerHeight;
+                        const allEls = columnsEl.querySelectorAll('p, blockquote, h1, h2, h3, h4, h5, h6, li');
+                        const candidates = [];
+                        
                         for (let i = 0; i < allEls.length; i++) {
-                            const text = (allEls[i].textContent || '').trim();
+                            const el = allEls[i];
+                            const text = (el.textContent || '').trim();
                             if (text.length < 5) continue;
-                            const rects = allEls[i].getClientRects();
-                            let isVisible = false;
+                            const rects = el.getClientRects();
+                            if (!rects || rects.length === 0) continue;
+                            
+                            let visibleRects = [];
+                            let hasPrecedingOffscreen = false;
                             for (let j = 0; j < rects.length; j++) {
                                 const r = rects[j];
-                                if (r.width > 20 && r.height > 8 && r.bottom > 40 && r.top < window.innerHeight - 40 && r.left >= -25 && r.left < spreadW - 25) {
-                                    isVisible = true;
-                                    break;
+                                if (r.right < 0) {
+                                    hasPrecedingOffscreen = true;
+                                }
+                                if (r.width > 20 && r.height > 8 && r.bottom > 40 && r.top < winH - 40 && r.left >= -20 && r.left < spreadW - 20) {
+                                    visibleRects.push(r);
                                 }
                             }
-                            if (isVisible) {
-                                snippet = text;
-                                break;
+                            
+                            if (visibleRects.length > 0) {
+                                const firstR = visibleRects[0];
+                                const isRightColumn = firstR.left >= (spreadW * 0.48);
+                                const columnIndex = isRightColumn ? 1 : 0;
+                                candidates.push({
+                                    el: el,
+                                    text: text,
+                                    hasPreceding: hasPrecedingOffscreen,
+                                    rectCount: visibleRects.length,
+                                    columnIndex: columnIndex,
+                                    top: firstR.top,
+                                    left: firstR.left
+                                });
                             }
                         }
-                        if (snippet.length > 0 && window.webkit && window.webkit.messageHandlers.visibleSnippet) {
-                            window.webkit.messageHandlers.visibleSnippet.postMessage(snippet.substring(0, 300));
-                        }
-                    } catch(e) {}
+                        
+                        if (candidates.length === 0) return '';
+                        
+                        // Sort candidates:
+                        // 1. Column index (Left column 0 first, Right column 1 second)
+                        // 2. Prioritize fresh paragraphs over 1-line spillovers from previous page
+                        // 3. Vertical position (top to bottom)
+                        candidates.sort(function(a, b) {
+                            if (a.columnIndex !== b.columnIndex) {
+                                return a.columnIndex - b.columnIndex;
+                            }
+                            if (a.hasPreceding && a.rectCount <= 1 && !b.hasPreceding) {
+                                return 1;
+                            }
+                            if (b.hasPreceding && b.rectCount <= 1 && !a.hasPreceding) {
+                                return -1;
+                            }
+                            return a.top - b.top;
+                        });
+                        
+                        return candidates[0].text.substring(0, 300);
+                    } catch(e) {
+                        return '';
+                    }
+                }
+                
+                function postVisibleSnippet() {
+                    const snippet = getVisibleSnippetText();
+                    if (snippet && snippet.length > 0 && window.webkit && window.webkit.messageHandlers.visibleSnippet) {
+                        window.webkit.messageHandlers.visibleSnippet.postMessage(snippet);
+                    }
                 }
                 
                 function updateDisplay() {
                     columnsEl.style.transform = 'translateX(' + (-currentSpread * getSpreadWidth()) + 'px)';
                     reportMetrics();
+                    setTimeout(function() {
+                        const anchor = getVisibleAnchor();
+                        if (anchor) activeReadingAnchor = anchor;
+                        postVisibleSnippet();
+                    }, 430);
                 }
                 
                 function nextSpread() {
@@ -1168,22 +1251,33 @@ struct BookWebView: NSViewRepresentable {
                 }
 
                 let lastSpreadWidth = window.innerWidth;
+                let lastSpreadHeight = window.innerHeight;
+                let lastTotalSpreads = 1;
+                let activeReadingAnchor = null;
 
-                // Continuous Dynamic Page Calculation on Window Resizing
+                // Continuous Dynamic Page Calculation on Window Resizing & Ratio Shifts
                 function handleResize() {
                     applyInitialSpread();
                     const totalNow = getTotalSpreads();
                     const spreadW = getSpreadWidth();
+                    const curH = window.innerHeight;
                     
-                    if (Math.abs(spreadW - lastSpreadWidth) > 5) {
-                        const anchor = getVisibleAnchor();
+                    const widthChanged = Math.abs(spreadW - lastSpreadWidth) > 3;
+                    const heightChanged = Math.abs(curH - lastSpreadHeight) > 5;
+                    const spreadsChanged = totalNow !== lastTotalSpreads;
+                    
+                    if (widthChanged || heightChanged || spreadsChanged) {
+                        const anchor = getVisibleAnchor() || activeReadingAnchor;
                         if (anchor && typeof anchor.offsetLeft === 'number') {
                             const newSpread = Math.floor(anchor.offsetLeft / spreadW);
                             currentSpread = Math.max(0, Math.min(totalNow - 1, newSpread));
+                            activeReadingAnchor = anchor;
                         } else {
                             currentSpread = Math.max(0, Math.min(totalNow - 1, currentSpread));
                         }
                         lastSpreadWidth = spreadW;
+                        lastSpreadHeight = curH;
+                        lastTotalSpreads = totalNow;
                     } else {
                         currentSpread = Math.max(0, Math.min(totalNow - 1, currentSpread));
                     }
@@ -1191,6 +1285,12 @@ struct BookWebView: NSViewRepresentable {
                     columnsEl.style.transform = 'translateX(' + (-currentSpread * spreadW) + 'px)';
                     reportMetrics();
                 }
+                columnsEl.addEventListener('transitionend', function(e) {
+                    if (e.target === columnsEl) {
+                        postVisibleSnippet();
+                    }
+                });
+                
                 window.addEventListener('resize', handleResize);
                 
                 if (window.ResizeObserver) {

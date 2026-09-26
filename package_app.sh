@@ -164,4 +164,7 @@ if let img = NSImage(contentsOfFile: iconPath) {
 }
 SWIFT
 
-echo "==> Booksy.app built and installed to /Applications/Booksy.app successfully!"
+echo "==> Building standalone installer package: Booksy-Installer.pkg..."
+pkgbuild --component "$APP_PATH" --install-location /Applications "$SOURCE_DIR/Booksy-Installer.pkg"
+
+echo "==> Booksy.app built, packaged, and installer created successfully at Booksy-Installer.pkg!"

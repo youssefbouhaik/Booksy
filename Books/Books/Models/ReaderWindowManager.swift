@@ -33,7 +33,7 @@ class ReaderWindowManager: NSObject, NSWindowDelegate {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
-        window.minSize = NSSize(width: 800, height: 600)
+        window.minSize = NSSize(width: 480, height: 480)
         window.center()
         
         let readerView = EmbeddedReaderView(book: book, isStandaloneWindow: true) {

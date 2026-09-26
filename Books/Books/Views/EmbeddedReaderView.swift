@@ -115,11 +115,13 @@ struct EmbeddedReaderView: View {
         let w = max(320.0, Double(readerViewSize.width))
         let h = max(400.0, Double(readerViewSize.height))
         
-        let marginX: Double = isTwoPageSpread ? max(44.0, w * 0.05) : max(36.0, w * 0.08)
+        let isWideRatio = (w / max(1.0, h)) >= 1.15 && w >= 840.0
+        let isTwoCol = (columnsOption == "2") || (columnsOption == "auto" && isWideRatio)
+        
+        let marginX: Double = isTwoCol ? max(44.0, w * 0.05) : max(36.0, w * 0.08)
         let contentW = max(220.0, w - marginX * 2.0)
         let contentH = max(260.0, h - 136.0)
         
-        let isTwoCol = isTwoPageSpread && w >= 700.0
         let colCount: Double = isTwoCol ? 2.0 : 1.0
         let gap: Double = isTwoCol ? 40.0 : 0.0
         let colW = max(180.0, (contentW - gap) / colCount)
@@ -1090,7 +1092,7 @@ struct EmbeddedReaderView: View {
                 .zIndex(99999)
             }
         }
-        .frame(minWidth: 860, minHeight: 640)
+        .frame(minWidth: 480, minHeight: 480)
         .onHover { isHovered in
             handleWindowHover(isHovering: isHovered)
         }
