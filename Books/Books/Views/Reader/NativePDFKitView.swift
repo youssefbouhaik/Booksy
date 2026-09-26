@@ -196,11 +196,17 @@ struct NativePDFKitView: NSViewRepresentable {
             targetMode = .singlePage
             asBook = false
         }
+        var changed = false
         if pdfView.displayMode != targetMode {
             pdfView.displayMode = targetMode
+            changed = true
         }
         if pdfView.displaysAsBook != asBook {
             pdfView.displaysAsBook = asBook
+            changed = true
+        }
+        if changed {
+            pdfView.layoutDocumentView()
         }
     }
     

@@ -178,6 +178,13 @@ struct EmbeddedReaderView: View {
         showTOCPopover || showBookmarksPopover || showNotesPopover || showAppearancePopover || showSearchPopover || showCustomizeSheet || showFloatingAudio
     }
     
+    var isToolbarVisible: Bool {
+        if book.isPDF {
+            return true // Always keep controls visible on PDFs, matching macOS Preview
+        }
+        return isControlsVisible || hasActivePopover
+    }
+    
     private func registerMouseActivity() {
         lastActivityTime = Date()
         withAnimation(.easeInOut(duration: 0.22)) {
@@ -706,9 +713,9 @@ struct EmbeddedReaderView: View {
                     .padding(.leading, 20)
                     .padding(.trailing, 20)
                     .padding(.top, 6)
-                    .opacity(isControlsVisible || hasActivePopover ? 1.0 : 0.0)
-                    .animation(.easeInOut(duration: 0.22), value: isControlsVisible || hasActivePopover)
-                    .allowsHitTesting(isControlsVisible || hasActivePopover)
+                    .opacity(isToolbarVisible ? 1.0 : 0.0)
+                    .animation(.easeInOut(duration: 0.22), value: isToolbarVisible)
+                    .allowsHitTesting(isToolbarVisible)
                     
                     Spacer()
                     
@@ -902,9 +909,9 @@ struct EmbeddedReaderView: View {
                             }
                         }
                         .frame(width: 320, height: 8)
-                        .opacity(isControlsVisible || isHoveringScrubber || hasActivePopover ? 1.0 : 0.0)
-                        .animation(.easeInOut(duration: 0.22), value: isControlsVisible || isHoveringScrubber || hasActivePopover)
-                        .allowsHitTesting(isControlsVisible || isHoveringScrubber || hasActivePopover)
+                        .opacity(isToolbarVisible || isHoveringScrubber ? 1.0 : 0.0)
+                        .animation(.easeInOut(duration: 0.22), value: isToolbarVisible || isHoveringScrubber)
+                        .allowsHitTesting(isToolbarVisible || isHoveringScrubber)
                     }
                     .padding(.bottom, 6)
                 }
@@ -990,6 +997,41 @@ struct EmbeddedReaderView: View {
             if self.keyMonitor == nil {
                 self.keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                     if !self.showSearchPopover && !self.showAddNoteSheet && !self.showCustomizeSheet {
+                        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                        
+                        // Option + Command combinations (Preview View Mode shortcuts: ⌥⌘1, ⌥⌘2, ⌥⌘3)
+                        if flags == [.option, .command] {
+                            switch event.keyCode {
+                            case 18: // '1' -> Single Page mode
+                                self.pdfDisplayMode = "single"
+                                return nil
+                            case 19: // '2' -> Two Pages / Book Spread mode
+                                self.pdfDisplayMode = "book"
+                                return nil
+                            case 20: // '3' -> Continuous Scroll mode
+                                self.pdfDisplayMode = "continuous"
+                                return nil
+                            default:
+                                break
+                            }
+                        }
+                        
+                        // Command combinations (Preview Zoom & Audio shortcuts)
+                        if flags == .command {
+                            if let chars = event.charactersIgnoringModifiers {
+                                if chars == "=" || chars == "+" {
+                                    self.pdfZoomInTrigger += 1
+                                    return nil
+                                } else if chars == "-" {
+                                    self.pdfZoomOutTrigger += 1
+                                    return nil
+                                } else if chars == "0" {
+                                    self.pdfZoomResetTrigger += 1
+                                    return nil
+                                }
+                            }
+                        }
+                        
                         switch event.keyCode {
                         case 124: // Right arrow
                             self.flipToNextPage()
