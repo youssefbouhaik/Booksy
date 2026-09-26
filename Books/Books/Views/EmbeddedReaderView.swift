@@ -451,7 +451,7 @@ struct EmbeddedReaderView: View {
                             currentChapterIndex += 1
                             currentSpreadIndex = 1
                             seekToSpread = 1
-                            loadChapter()
+                            loadChapter(targetSpread: 1)
                             updateBookmarkState()
                             CurrentlyReadingManager.shared.markAsReading(book: self.book, chapterIndex: self.currentChapterIndex, spreadIndex: 1)
                         }
@@ -459,11 +459,10 @@ struct EmbeddedReaderView: View {
                     onPrevChapter: {
                         if currentChapterIndex > 0 {
                             currentChapterIndex -= 1
-                            currentSpreadIndex = 1
-                            seekToSpread = 1
-                            loadChapter()
+                            seekToSpread = -1
+                            loadChapter(targetSpread: -1)
                             updateBookmarkState()
-                            CurrentlyReadingManager.shared.markAsReading(book: self.book, chapterIndex: self.currentChapterIndex, spreadIndex: 1)
+                            CurrentlyReadingManager.shared.markAsReading(book: self.book, chapterIndex: self.currentChapterIndex, spreadIndex: self.currentSpreadIndex)
                         }
                     }
                 )
@@ -919,17 +918,48 @@ struct EmbeddedReaderView: View {
                                                 currentChapterIndex = targetPage
                                                 updateBookmarkState()
                                             }
-                                        } else if totalChapters > 1 {
-                                            let targetChapter = min(totalChapters - 1, Int(pct * Double(totalChapters)))
+                                        } else {
+                                            // Dynamic book-wide page & chapter scrubbing for EPUB
+                                            let totalBookPages = max(1, overallTotalPages)
+                                            let targetBookPage = max(1, min(totalBookPages, Int(round(pct * Double(totalBookPages - 1))) + 1))
+                                            
+                                            var targetChapter = 0
+                                            var targetSpreadInChapter = 1
+                                            
+                                            if !spineStartPages.isEmpty {
+                                                for (idx, startPage) in spineStartPages.enumerated() {
+                                                    let scaledStart = Int(round(Double(startPage) * dynamicScaleRatio))
+                                                    if scaledStart <= targetBookPage {
+                                                        targetChapter = idx
+                                                    } else {
+                                                        break
+                                                    }
+                                                }
+                                                let chapterStart = Int(round(Double(spineStartPages[targetChapter]) * dynamicScaleRatio))
+                                                let offset = max(0, targetBookPage - chapterStart)
+                                                targetSpreadInChapter = max(1, offset + 1)
+                                            } else {
+                                                let totalUnits = Double(totalChapters * max(1, totalSpreadsInChapter))
+                                                let currentUnit = Int(round(pct * (totalUnits - 1)))
+                                                targetChapter = min(totalChapters - 1, currentUnit / max(1, totalSpreadsInChapter))
+                                                targetSpreadInChapter = max(1, (currentUnit % max(1, totalSpreadsInChapter)) + 1)
+                                            }
+                                            
+                                            // If dragging to the very end of the book, target the last spread
+                                            if pct >= 0.995 {
+                                                targetChapter = totalChapters - 1
+                                                targetSpreadInChapter = -1
+                                            }
+                                            
                                             if targetChapter != currentChapterIndex {
                                                 currentChapterIndex = targetChapter
-                                                loadChapter()
-                                            }
-                                        } else {
-                                            let target = max(1, min(totalSpreadsInChapter, Int(round(Double(pct) * Double(totalSpreadsInChapter - 1))) + 1))
-                                            if target != currentSpreadIndex {
-                                                currentSpreadIndex = target
-                                                seekToSpread = target
+                                                seekToSpread = targetSpreadInChapter
+                                                loadChapter(targetSpread: targetSpreadInChapter)
+                                            } else {
+                                                if targetSpreadInChapter != currentSpreadIndex {
+                                                    currentSpreadIndex = max(1, targetSpreadInChapter)
+                                                    seekToSpread = targetSpreadInChapter
+                                                }
                                             }
                                         }
                                     }
@@ -1037,13 +1067,17 @@ struct EmbeddedReaderView: View {
             self.loadMetadata()
             
             // Restore persistent reading position across sessions
+            let savedSpread: Int
             if let saved = CurrentlyReadingManager.shared.getSavedProgress(for: book) {
                 self.currentChapterIndex = saved.chapter
                 self.currentSpreadIndex = saved.spread
                 self.seekToSpread = saved.spread
+                savedSpread = saved.spread
                 if book.isPDF {
                     self.targetPDFPage = saved.chapter
                 }
+            } else {
+                savedSpread = 1
             }
             
             if book.isPDF, let path = book.path {
@@ -1055,7 +1089,7 @@ struct EmbeddedReaderView: View {
                 self.isLoading = false
                 self.isInitialBookLoad = false
             } else {
-                loadChapter()
+                loadChapter(targetSpread: savedSpread)
             }
             registerMouseActivity()
             
@@ -1382,7 +1416,7 @@ struct EmbeddedReaderView: View {
                                         currentChapterIndex = bm.chapterIndex
                                         currentSpreadIndex = bm.spreadIndex
                                         seekToSpread = bm.spreadIndex
-                                        loadChapter()
+                                        loadChapter(targetSpread: bm.spreadIndex)
                                     }
                                     updateBookmarkState()
                                     showBookmarksPopover = false
@@ -2008,7 +2042,7 @@ struct EmbeddedReaderView: View {
             currentChapterIndex = note.chapterIndex
             currentSpreadIndex = note.spreadIndex
             seekToSpread = note.spreadIndex
-            loadChapter()
+            loadChapter(targetSpread: note.spreadIndex)
         }
         showNotesPopover = false
     }
@@ -2068,7 +2102,7 @@ struct EmbeddedReaderView: View {
         }
     }
     
-    func loadChapter(preserveAudio: Bool = false) {
+    func loadChapter(targetSpread: Int = 1, preserveAudio: Bool = false) {
         guard let path = book.path else { return }
         if !preserveAudio { stopAudio() }
         if book.isPDF {
@@ -2137,7 +2171,10 @@ struct EmbeddedReaderView: View {
                 DispatchQueue.main.async {
                     guard thisGeneration == self.loadGeneration else { return }
                     self.chapterContent = content
-                    self.currentSpreadIndex = 1
+                    self.seekToSpread = targetSpread
+                    if targetSpread > 0 {
+                        self.currentSpreadIndex = targetSpread
+                    }
                     self.isLoading = false
                     self.isInitialBookLoad = false
                     self.updateBookmarkState()

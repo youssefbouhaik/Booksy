@@ -239,7 +239,7 @@ struct BookWebView: NSViewRepresentable {
             savedJSON = "[]"
         }
         
-        let contentKey = "\(chapterIndex)_\(bookPath)_\(readerTheme)_\(fontSize)_\(fontFamily)_\(isBoldText)_\(isTwoPageSpread)_\(isEditMode)_\(htmlContent.count)_\(savedJSON.count)_\(lineSpacing)_\(characterSpacing)_\(wordSpacing)_\(marginScale)_\(columnsOption)_\(justifyText)"
+        let contentKey = "\(chapterIndex)_\(bookPath)_\(readerTheme)_\(fontSize)_\(fontFamily)_\(isBoldText)_\(isTwoPageSpread)_\(isEditMode)_\(htmlContent.count)_\(lineSpacing)_\(characterSpacing)_\(wordSpacing)_\(marginScale)_\(columnsOption)_\(justifyText)"
         guard context.coordinator.lastContentKey != contentKey else {
             return
         }
@@ -594,6 +594,7 @@ struct BookWebView: NSViewRepresentable {
             </div>
             
             <script>
+                const targetInitialSpread = \(seekToSpread);
                 let currentSpread = 0;
                 let isTurningPage = false;
                 const columnsEl = document.getElementById('book-columns');
@@ -693,7 +694,11 @@ struct BookWebView: NSViewRepresentable {
                 function goToSpread(target) {
                     hideAnnotationBar();
                     const total = getTotalSpreads();
-                    currentSpread = Math.max(0, Math.min(total - 1, target - 1));
+                    if (target === -1 || target >= 999999) {
+                        currentSpread = Math.max(0, total - 1);
+                    } else {
+                        currentSpread = Math.max(0, Math.min(total - 1, target - 1));
+                    }
                     updateDisplay();
                 }
                 
@@ -1114,8 +1119,23 @@ struct BookWebView: NSViewRepresentable {
                     }
                 });
                 
+                let initialSpreadApplied = false;
+                function applyInitialSpread() {
+                    if (initialSpreadApplied) return;
+                    if (typeof targetInitialSpread === 'number' && (targetInitialSpread > 1 || targetInitialSpread === -1 || targetInitialSpread >= 999999)) {
+                        const total = getTotalSpreads();
+                        if (total > 1 || document.readyState === 'complete') {
+                            goToSpread(targetInitialSpread);
+                            initialSpreadApplied = true;
+                        }
+                    } else {
+                        initialSpreadApplied = true;
+                    }
+                }
+
                 // Continuous Dynamic Page Calculation on Window Resizing
                 function handleResize() {
+                    applyInitialSpread();
                     const totalNow = getTotalSpreads();
                     currentSpread = Math.max(0, Math.min(totalNow - 1, currentSpread));
                     columnsEl.style.transform = 'translateX(' + (-currentSpread * getSpreadWidth()) + 'px)';
@@ -1131,9 +1151,15 @@ struct BookWebView: NSViewRepresentable {
                 }
                 
                 setTimeout(function() {
+                    applyInitialSpread();
                     reportMetrics();
                     applySavedHighlights(savedHighlights);
-                }, 80);
+                }, 50);
+
+                setTimeout(function() {
+                    applyInitialSpread();
+                    reportMetrics();
+                }, 180);
             </script>
         </body>
         </html>

@@ -503,9 +503,17 @@ class CustomPDFView: PDFView {
         NSWorkspace.shared.open(url)
     }
     
+    private static var saveWorkItem: DispatchWorkItem? = nil
+    
     func saveDocumentIfPossible() {
         guard let doc = document, let url = doc.documentURL else { return }
-        doc.write(to: url)
+        CustomPDFView.saveWorkItem?.cancel()
+        let item = DispatchWorkItem { [weak doc] in
+            guard let doc = doc else { return }
+            doc.write(to: url)
+        }
+        CustomPDFView.saveWorkItem = item
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.8, execute: item)
     }
 }
 
