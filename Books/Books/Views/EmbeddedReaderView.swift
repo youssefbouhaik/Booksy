@@ -492,11 +492,26 @@ struct EmbeddedReaderView: View {
                                 }
                                 
                                 HStack(spacing: 2) {
-                                    AppleBooksIconButton(systemName: "list.bullet", isActive: showTOCPopover, tooltip: "Contents") {
-                                        showTOCPopover.toggle()
-                                    }
-                                    .popover(isPresented: $showTOCPopover) {
-                                        tocPopoverView
+                                    if book.isPDF {
+                                        AppleBooksIconButton(systemName: "sidebar.left", isActive: showTOCPopover && pdfSidebarTab == "thumbnails", tooltip: "Page Thumbnails") {
+                                            pdfSidebarTab = "thumbnails"
+                                            showTOCPopover.toggle()
+                                        }
+                                        .popover(isPresented: $showTOCPopover) {
+                                            tocPopoverView
+                                        }
+                                        
+                                        AppleBooksIconButton(systemName: "list.bullet", isActive: showTOCPopover && pdfSidebarTab == "outline", tooltip: "Table of Contents") {
+                                            pdfSidebarTab = "outline"
+                                            showTOCPopover.toggle()
+                                        }
+                                    } else {
+                                        AppleBooksIconButton(systemName: "list.bullet", isActive: showTOCPopover, tooltip: "Contents") {
+                                            showTOCPopover.toggle()
+                                        }
+                                        .popover(isPresented: $showTOCPopover) {
+                                            tocPopoverView
+                                        }
                                     }
                                     
                                     AppleBooksIconButton(systemName: "bookmark", isActive: showBookmarksPopover, tooltip: "Bookmarks") {
@@ -524,6 +539,62 @@ struct EmbeddedReaderView: View {
                             }
                             
                             Spacer()
+                            
+                            if book.isPDF {
+                                HStack(spacing: 8) {
+                                    // Direct PDF Zoom Controls
+                                    HStack(spacing: 0) {
+                                        Button(action: { pdfZoomOutTrigger += 1 }) {
+                                            Image(systemName: "minus.magnifyingglass")
+                                                .font(.system(size: 11))
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 5)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help("Zoom Out")
+                                        
+                                        Divider().frame(height: 14)
+                                        
+                                        Button(action: { pdfZoomResetTrigger += 1 }) {
+                                            Text("Fit")
+                                                .font(.system(size: 10, weight: .semibold))
+                                                .padding(.horizontal, 7)
+                                                .padding(.vertical, 5)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help("Fit to Window")
+                                        
+                                        Divider().frame(height: 14)
+                                        
+                                        Button(action: { pdfZoomInTrigger += 1 }) {
+                                            Image(systemName: "plus.magnifyingglass")
+                                                .font(.system(size: 11))
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 5)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help("Zoom In")
+                                    }
+                                    .background(
+                                        Capsule()
+                                            .fill(Color(nsColor: .windowBackgroundColor).opacity(0.85))
+                                            .background(.ultraThinMaterial, in: Capsule())
+                                            .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                                    )
+                                    
+                                    // Direct PDF Layout Mode Selector
+                                    Picker("", selection: $pdfDisplayMode) {
+                                        Text("Book").tag("book")
+                                        Text("Single").tag("single")
+                                        Text("Scroll").tag("continuous")
+                                    }
+                                    .pickerStyle(.segmented)
+                                    .frame(width: 175)
+                                    .scaleEffect(0.9)
+                                }
+                                
+                                Spacer()
+                            }
                             
                             // Right Floating Capsules (aA + Search capsule, Bookmark circle, Audio circle)
                             HStack(spacing: 10) {
@@ -710,14 +781,20 @@ struct EmbeddedReaderView: View {
                                 .font(.system(size: 10, weight: .regular))
                                 .foregroundColor(Color.secondary.opacity(0.4))
                             
-                            Text("Page \(currentSpreadIndex) of \(totalSpreadsInChapter)")
-                                .font(.system(size: 11.5, weight: .regular))
-                                .foregroundColor(Color.secondary.opacity(0.80))
-                            
-                            if overallTotalPages > totalSpreadsInChapter {
-                                Text("(\(overallCurrentPage) of \(overallTotalPages))")
-                                    .font(.system(size: 11, weight: .regular))
-                                    .foregroundColor(Color.secondary.opacity(0.60))
+                            if book.isPDF {
+                                Text("Page \(overallCurrentPage) of \(overallTotalPages)")
+                                    .font(.system(size: 11.5, weight: .regular))
+                                    .foregroundColor(Color.secondary.opacity(0.80))
+                            } else {
+                                Text("Page \(currentSpreadIndex) of \(totalSpreadsInChapter)")
+                                    .font(.system(size: 11.5, weight: .regular))
+                                    .foregroundColor(Color.secondary.opacity(0.80))
+                                
+                                if overallTotalPages > totalSpreadsInChapter {
+                                    Text("(\(overallCurrentPage) of \(overallTotalPages))")
+                                        .font(.system(size: 11, weight: .regular))
+                                        .foregroundColor(Color.secondary.opacity(0.60))
+                                }
                             }
                         }
                         .padding(.vertical, 3)
@@ -759,7 +836,14 @@ struct EmbeddedReaderView: View {
                                         registerMouseActivity()
                                         guard maxOffset > 0 else { return }
                                         let pct = max(0, min(1, (val.location.x - capsuleWidth / 2) / maxOffset))
-                                        if totalChapters > 1 {
+                                        if book.isPDF {
+                                            let targetPage = min(overallTotalPages - 1, max(0, Int(pct * Double(overallTotalPages))))
+                                            if targetPage != currentChapterIndex {
+                                                targetPDFPage = targetPage
+                                                currentChapterIndex = targetPage
+                                                updateBookmarkState()
+                                            }
+                                        } else if totalChapters > 1 {
                                             let targetChapter = min(totalChapters - 1, Int(pct * Double(totalChapters)))
                                             if targetChapter != currentChapterIndex {
                                                 currentChapterIndex = targetChapter
@@ -931,6 +1015,16 @@ struct EmbeddedReaderView: View {
     }
     
     var pagesLeftText: String {
+        if book.isPDF {
+            let left = max(0, overallTotalPages - overallCurrentPage)
+            if left <= 0 {
+                return "Last page"
+            } else if left == 1 {
+                return "1 page left"
+            } else {
+                return "\(left) pages left"
+            }
+        }
         if pagesLeftInChapter <= 0 {
             return "Last page in chapter"
         } else if pagesLeftInChapter == 1 {
