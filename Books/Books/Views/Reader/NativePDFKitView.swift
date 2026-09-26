@@ -11,7 +11,7 @@ import AppKit
 import PDFKit
 
 // MARK: - Floating PDF Annotation Bar HUD
-class PDFAnnotationBarView: NSVisualEffectView {
+class PDFAnnotationBarView: NSView {
     var onColor: ((String, NSColor) -> Void)?
     var onUnderline: (() -> Void)?
     var onStrike: (() -> Void)?
@@ -21,26 +21,30 @@ class PDFAnnotationBarView: NSVisualEffectView {
     
     private var deleteButton: NSButton?
     
-    let palette: [(name: String, hex: String, color: NSColor)] = [
-        ("Yellow", "#FFE270", NSColor(srgbRed: 1.0, green: 0.886, blue: 0.439, alpha: 0.65)),
-        ("Green", "#A8F596", NSColor(srgbRed: 0.659, green: 0.961, blue: 0.588, alpha: 0.65)),
-        ("Blue", "#92D6FF", NSColor(srgbRed: 0.573, green: 0.839, blue: 1.0, alpha: 0.65)),
-        ("Pink", "#FFB3D9", NSColor(srgbRed: 1.0, green: 0.702, blue: 0.851, alpha: 0.65)),
-        ("Purple", "#D2B4FF", NSColor(srgbRed: 0.824, green: 0.706, blue: 1.0, alpha: 0.65))
+    let palette: [(name: String, hex: String, swatchColor: NSColor, highlightColor: NSColor)] = [
+        ("Yellow", "#FFD60A", NSColor(srgbRed: 1.0, green: 0.839, blue: 0.04, alpha: 1.0), NSColor(srgbRed: 1.0, green: 0.90, blue: 0.35, alpha: 0.70)),
+        ("Green", "#32D74B", NSColor(srgbRed: 0.196, green: 0.843, blue: 0.294, alpha: 1.0), NSColor(srgbRed: 0.40, green: 0.90, blue: 0.50, alpha: 0.65)),
+        ("Blue", "#0A84FF", NSColor(srgbRed: 0.039, green: 0.518, blue: 1.0, alpha: 1.0), NSColor(srgbRed: 0.35, green: 0.75, blue: 1.0, alpha: 0.65)),
+        ("Pink", "#FF375F", NSColor(srgbRed: 1.0, green: 0.216, blue: 0.373, alpha: 1.0), NSColor(srgbRed: 1.0, green: 0.50, blue: 0.70, alpha: 0.65)),
+        ("Purple", "#BF5AF2", NSColor(srgbRed: 0.749, green: 0.353, blue: 0.949, alpha: 1.0), NSColor(srgbRed: 0.78, green: 0.55, blue: 0.98, alpha: 0.65))
     ]
     
     init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: 285, height: 36))
-        self.material = .hudWindow
-        self.state = .active
-        self.blendingMode = .withinWindow
+        super.init(frame: NSRect(x: 0, y: 0, width: 295, height: 40))
         self.wantsLayer = true
-        self.layer?.cornerRadius = 18
-        self.layer?.masksToBounds = true
-        self.shadow = NSShadow()
-        self.shadow?.shadowColor = NSColor.black.withAlphaComponent(0.28)
-        self.shadow?.shadowBlurRadius = 12
-        self.shadow?.shadowOffset = NSSize(width: 0, height: -3)
+        
+        // High-contrast, solid Apple Books dark HUD (never see-through)
+        self.layer?.backgroundColor = NSColor(red: 0.11, green: 0.11, blue: 0.13, alpha: 0.97).cgColor
+        self.layer?.cornerRadius = 20
+        self.layer?.borderColor = NSColor.white.withAlphaComponent(0.20).cgColor
+        self.layer?.borderWidth = 1.0
+        
+        // Deep drop shadow floating above page text
+        self.layer?.shadowColor = NSColor.black.cgColor
+        self.layer?.shadowOpacity = 0.55
+        self.layer?.shadowRadius = 16
+        self.layer?.shadowOffset = CGSize(width: 0, height: -4)
+        self.layer?.masksToBounds = false
         self.isHidden = true
         
         setupViews()
@@ -52,7 +56,7 @@ class PDFAnnotationBarView: NSVisualEffectView {
     
     func setHasActiveAnnotation(_ hasActive: Bool) {
         deleteButton?.isHidden = !hasActive
-        let w: CGFloat = hasActive ? 320 : 285
+        let w: CGFloat = hasActive ? 335 : 295
         var f = self.frame
         f.size.width = w
         self.frame = f
@@ -61,52 +65,52 @@ class PDFAnnotationBarView: NSVisualEffectView {
     private func setupViews() {
         let stack = NSStackView()
         stack.orientation = .horizontal
-        stack.spacing = 7
+        stack.spacing = 8
         stack.alignment = .centerY
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             stack.topAnchor.constraint(equalTo: topAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
         
-        // 5 Color Circles
+        // 5 Color Circles (100% opaque, vivid swatches)
         for item in palette {
-            let btn = NSButton(frame: NSRect(x: 0, y: 0, width: 18, height: 18))
+            let btn = NSButton(frame: NSRect(x: 0, y: 0, width: 20, height: 20))
             btn.title = ""
             btn.bezelStyle = .circular
             btn.isBordered = false
             btn.wantsLayer = true
-            btn.layer?.cornerRadius = 9
+            btn.layer?.cornerRadius = 10
             btn.layer?.masksToBounds = true
-            btn.layer?.backgroundColor = item.color.cgColor
-            btn.layer?.borderWidth = 1.0
-            btn.layer?.borderColor = NSColor.white.withAlphaComponent(0.4).cgColor
+            btn.layer?.backgroundColor = item.swatchColor.cgColor
+            btn.layer?.borderWidth = 1.5
+            btn.layer?.borderColor = NSColor.white.withAlphaComponent(0.35).cgColor
             btn.target = self
             btn.action = #selector(colorClicked(_:))
             btn.toolTip = "\(item.name) Highlight"
-            btn.widthAnchor.constraint(equalToConstant: 18).isActive = true
-            btn.heightAnchor.constraint(equalToConstant: 18).isActive = true
+            btn.widthAnchor.constraint(equalToConstant: 20).isActive = true
+            btn.heightAnchor.constraint(equalToConstant: 20).isActive = true
             stack.addArrangedSubview(btn)
         }
         
-        // Divider
+        // Vertical Divider
         let sep = NSBox()
         sep.boxType = .separator
         sep.translatesAutoresizingMaskIntoConstraints = false
         sep.widthAnchor.constraint(equalToConstant: 1).isActive = true
-        sep.heightAnchor.constraint(equalToConstant: 16).isActive = true
+        sep.heightAnchor.constraint(equalToConstant: 18).isActive = true
         stack.addArrangedSubview(sep)
         
-        // Underline
-        let uBtn = makeToolButton(title: "U", font: NSFont.boldSystemFont(ofSize: 12), toolTip: "Underline", action: #selector(underlineClicked))
+        // Underline (U)
+        let uBtn = makeToolButton(title: "U", font: NSFont.boldSystemFont(ofSize: 13), toolTip: "Underline", action: #selector(underlineClicked))
         stack.addArrangedSubview(uBtn)
         
-        // Strike
-        let sBtn = makeToolButton(title: "S", font: NSFont.boldSystemFont(ofSize: 12), toolTip: "Strikethrough", action: #selector(strikeClicked))
+        // Strike (S)
+        let sBtn = makeToolButton(title: "S", font: NSFont.boldSystemFont(ofSize: 13), toolTip: "Strikethrough", action: #selector(strikeClicked))
         stack.addArrangedSubview(sBtn)
         
         // Note
@@ -135,18 +139,26 @@ class PDFAnnotationBarView: NSVisualEffectView {
         btn.font = font
         btn.toolTip = toolTip
         btn.contentTintColor = .white
+        btn.wantsLayer = true
+        btn.layer?.cornerRadius = 5
+        btn.widthAnchor.constraint(equalToConstant: 22).isActive = true
+        btn.heightAnchor.constraint(equalToConstant: 24).isActive = true
         return btn
     }
     
     private func makeIconButton(image: NSImage?, toolTip: String, action: Selector) -> NSButton {
-        let btn = NSButton(image: image ?? NSImage(), target: self, action: action)
+        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
+        let configuredImg = image?.withSymbolConfiguration(config) ?? image
+        let btn = NSButton(image: configuredImg ?? NSImage(), target: self, action: action)
         btn.bezelStyle = .inline
         btn.isBordered = false
         btn.toolTip = toolTip
         btn.contentTintColor = .white
         btn.imageScaling = .scaleProportionallyDown
-        btn.widthAnchor.constraint(equalToConstant: 20).isActive = true
-        btn.heightAnchor.constraint(equalToConstant: 20).isActive = true
+        btn.wantsLayer = true
+        btn.layer?.cornerRadius = 5
+        btn.widthAnchor.constraint(equalToConstant: 24).isActive = true
+        btn.heightAnchor.constraint(equalToConstant: 24).isActive = true
         return btn
     }
     
@@ -155,9 +167,9 @@ class PDFAnnotationBarView: NSVisualEffectView {
         let colorButtons = stack.arrangedSubviews.filter { $0 is NSButton && ($0 as! NSButton).title.isEmpty && $0 != deleteButton }
         if let idx = colorButtons.firstIndex(of: sender), idx < palette.count {
             let item = palette[idx]
-            onColor?(item.hex, item.color)
+            onColor?(item.hex, item.highlightColor)
         } else {
-            onColor?(palette[0].hex, palette[0].color)
+            onColor?(palette[0].hex, palette[0].highlightColor)
         }
     }
     
@@ -338,11 +350,11 @@ class CustomPDFView: PDFView {
         hideAnnotationBar()
     }
     
-    @objc func highlightYellow() { applyColorToSelectionOrAnnotation(hex: "#FFE270", color: NSColor(srgbRed: 1.0, green: 0.886, blue: 0.439, alpha: 0.65)) }
-    @objc func highlightGreen() { applyColorToSelectionOrAnnotation(hex: "#A8F596", color: NSColor(srgbRed: 0.659, green: 0.961, blue: 0.588, alpha: 0.65)) }
-    @objc func highlightBlue() { applyColorToSelectionOrAnnotation(hex: "#92D6FF", color: NSColor(srgbRed: 0.573, green: 0.839, blue: 1.0, alpha: 0.65)) }
-    @objc func highlightPink() { applyColorToSelectionOrAnnotation(hex: "#FFB3D9", color: NSColor(srgbRed: 1.0, green: 0.702, blue: 0.851, alpha: 0.65)) }
-    @objc func highlightPurple() { applyColorToSelectionOrAnnotation(hex: "#D2B4FF", color: NSColor(srgbRed: 0.824, green: 0.706, blue: 1.0, alpha: 0.65)) }
+    @objc func highlightYellow() { applyColorToSelectionOrAnnotation(hex: "#FFD60A", color: NSColor(srgbRed: 1.0, green: 0.90, blue: 0.35, alpha: 0.70)) }
+    @objc func highlightGreen() { applyColorToSelectionOrAnnotation(hex: "#32D74B", color: NSColor(srgbRed: 0.40, green: 0.90, blue: 0.50, alpha: 0.65)) }
+    @objc func highlightBlue() { applyColorToSelectionOrAnnotation(hex: "#0A84FF", color: NSColor(srgbRed: 0.35, green: 0.75, blue: 1.0, alpha: 0.65)) }
+    @objc func highlightPink() { applyColorToSelectionOrAnnotation(hex: "#FF375F", color: NSColor(srgbRed: 1.0, green: 0.50, blue: 0.70, alpha: 0.65)) }
+    @objc func highlightPurple() { applyColorToSelectionOrAnnotation(hex: "#BF5AF2", color: NSColor(srgbRed: 0.78, green: 0.55, blue: 0.98, alpha: 0.65)) }
     
     @objc func underlineCurrentSelection() {
         guard let sel = currentSelection else { return }
@@ -382,6 +394,10 @@ class CustomPDFView: PDFView {
             }
         }
         saveDocumentIfPossible()
+        if let page = sel.pages.first, let doc = document, let text = sel.string {
+            let pageIdx = doc.index(for: page)
+            onAddAnnotation?(text.trimmingCharacters(in: .whitespacesAndNewlines), "", "#FF453A", pageIdx)
+        }
         clearSelection()
         hideAnnotationBar()
     }
@@ -400,13 +416,13 @@ class CustomPDFView: PDFView {
             existingNote = ""
             pageIdx = doc.index(for: page)
             // Apply default yellow highlight so the quote stays visually marked
-            applyColorToSelectionOrAnnotation(hex: "#FFE270", color: NSColor(srgbRed: 1.0, green: 0.886, blue: 0.439, alpha: 0.65))
+            applyColorToSelectionOrAnnotation(hex: "#FFD60A", color: NSColor(srgbRed: 1.0, green: 0.90, blue: 0.35, alpha: 0.70))
         } else {
             return
         }
         
         hideAnnotationBar()
-        onPromptNote?(text, existingNote, "#FFE270", pageIdx)
+        onPromptNote?(text, existingNote, "#FFD60A", pageIdx)
     }
     
     @objc func copySelectedText() {

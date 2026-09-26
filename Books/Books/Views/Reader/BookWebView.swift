@@ -459,13 +459,14 @@ struct BookWebView: NSViewRepresentable {
                 z-index: 99999;
                 display: none;
                 align-items: center;
-                gap: 7px;
-                padding: 6px 11px;
-                background: rgba(45, 45, 48, 0.88);
-                backdrop-filter: blur(20px);
-                -webkit-backdrop-filter: blur(20px);
-                border-radius: 20px;
-                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28), 0 0 0 0.5px rgba(255, 255, 255, 0.18);
+                gap: 8px;
+                padding: 7px 13px;
+                background: rgba(26, 26, 28, 0.98);
+                backdrop-filter: blur(30px);
+                -webkit-backdrop-filter: blur(30px);
+                border-radius: 22px;
+                border: 1px solid rgba(255, 255, 255, 0.20);
+                box-shadow: 0 12px 32px rgba(0, 0, 0, 0.50), 0 2px 6px rgba(0, 0, 0, 0.30);
                 transform: translateX(-50%) scale(0.95);
                 transition: opacity 0.15s ease, transform 0.15s ease;
                 opacity: 0;
@@ -480,28 +481,28 @@ struct BookWebView: NSViewRepresentable {
                 transform: translateX(-50%) scale(1.0);
             }
             .booksy-color-chip {
-                width: 17px;
-                height: 17px;
+                width: 20px;
+                height: 20px;
                 border-radius: 50%;
                 cursor: pointer;
                 transition: transform 0.12s ease;
-                border: 1.5px solid rgba(255, 255, 255, 0.3);
+                border: 1.5px solid rgba(255, 255, 255, 0.35);
                 flex-shrink: 0;
             }
             .booksy-color-chip:hover {
                 transform: scale(1.22);
             }
-            .chip-yellow { background-color: #FFE270; }
-            .chip-green { background-color: #A8F596; }
-            .chip-blue { background-color: #92D6FF; }
-            .chip-pink { background-color: #FFB3D9; }
-            .chip-purple { background-color: #D2B4FF; }
+            .chip-yellow { background-color: #FFD60A; }
+            .chip-green { background-color: #32D74B; }
+            .chip-blue { background-color: #0A84FF; }
+            .chip-pink { background-color: #FF375F; }
+            .chip-purple { background-color: #BF5AF2; }
             
             .booksy-divider {
                 width: 1px;
-                height: 15px;
+                height: 18px;
                 background: rgba(255, 255, 255, 0.22);
-                margin: 0 2px;
+                margin: 0 3px;
             }
             .booksy-tool-btn {
                 background: transparent;
@@ -509,30 +510,31 @@ struct BookWebView: NSViewRepresentable {
                 color: #FFFFFF;
                 display: inline-flex;
                 align-items: center;
+                justify-content: center;
                 cursor: pointer;
-                padding: 3px 6px;
+                padding: 4px 7px;
                 border-radius: 6px;
-                transition: background 0.12s ease;
-                font-size: 11.5px;
-                font-weight: 500;
+                transition: all 0.12s ease;
+                font-size: 12px;
+                font-weight: 600;
             }
             .booksy-tool-btn:hover {
-                background: rgba(255, 255, 255, 0.18);
+                background: rgba(255, 255, 255, 0.22);
+                transform: scale(1.08);
             }
             
             /* Highlight Marks in Body */
             mark.booksy-highlight {
-                background-color: #FFE270;
+                background-color: #FFD60A;
                 color: inherit;
                 border-radius: 3px;
                 padding: 1px 2px;
                 cursor: pointer;
-                mix-blend-mode: multiply;
             }
             body[style*="background-color: #000000"] mark.booksy-highlight,
             body[style*="background-color: #2C2C2E"] mark.booksy-highlight {
-                mix-blend-mode: screen;
-                opacity: 0.88;
+                color: #111111 !important;
+                font-weight: 500;
             }
             span.booksy-underline {
                 text-decoration: underline;
@@ -563,11 +565,11 @@ struct BookWebView: NSViewRepresentable {
             <div class="nav-strip-right" onclick="nextSpread()"></div>
             
             <div id="booksy-annotation-bar" onmousedown="event.preventDefault();">
-                <div class="booksy-color-chip chip-yellow" title="Yellow" onmousedown="event.preventDefault();" onclick="applyHighlight('#FFE270')"></div>
-                <div class="booksy-color-chip chip-green" title="Green" onmousedown="event.preventDefault();" onclick="applyHighlight('#A8F596')"></div>
-                <div class="booksy-color-chip chip-blue" title="Blue" onmousedown="event.preventDefault();" onclick="applyHighlight('#92D6FF')"></div>
-                <div class="booksy-color-chip chip-pink" title="Pink" onmousedown="event.preventDefault();" onclick="applyHighlight('#FFB3D9')"></div>
-                <div class="booksy-color-chip chip-purple" title="Purple" onmousedown="event.preventDefault();" onclick="applyHighlight('#D2B4FF')"></div>
+                <div class="booksy-color-chip chip-yellow" title="Yellow" onmousedown="event.preventDefault();" onclick="applyHighlight('#FFD60A')"></div>
+                <div class="booksy-color-chip chip-green" title="Green" onmousedown="event.preventDefault();" onclick="applyHighlight('#32D74B')"></div>
+                <div class="booksy-color-chip chip-blue" title="Blue" onmousedown="event.preventDefault();" onclick="applyHighlight('#0A84FF')"></div>
+                <div class="booksy-color-chip chip-pink" title="Pink" onmousedown="event.preventDefault();" onclick="applyHighlight('#FF375F')"></div>
+                <div class="booksy-color-chip chip-purple" title="Purple" onmousedown="event.preventDefault();" onclick="applyHighlight('#BF5AF2')"></div>
                 <div class="booksy-divider"></div>
                 <button class="booksy-tool-btn" title="Underline" onmousedown="event.preventDefault();" onclick="applyUnderline()">
                     <span style="text-decoration: underline; font-weight: bold; font-family: serif; font-size: 13px;">U</span>

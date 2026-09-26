@@ -26,15 +26,15 @@ struct NoteEditorModalView: View {
     var onCancel: () -> Void
     
     @State private var currentNote: String = ""
-    @State private var currentColor: String = "#FFE270"
+    @State private var currentColor: String = "#FFD60A"
     @FocusState private var isEditorFocused: Bool
     
     let palette: [(name: String, hex: String)] = [
-        ("Yellow", "#FFE270"),
-        ("Green", "#A8F596"),
-        ("Blue", "#92D6FF"),
-        ("Pink", "#FFB3D9"),
-        ("Purple", "#D2B4FF")
+        ("Yellow", "#FFD60A"),
+        ("Green", "#32D74B"),
+        ("Blue", "#0A84FF"),
+        ("Pink", "#FF375F"),
+        ("Purple", "#BF5AF2")
     ]
     
     var body: some View {
