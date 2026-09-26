@@ -430,10 +430,13 @@ struct EmbeddedReaderView: View {
                     }
                 )
                 .ignoresSafeArea()
-                
-                // Floating Chevrons (< and >) on sides
-                HStack {
-                    Button(action: { flipToPrevPage() }) {
+            }
+            
+            if !isInitialBookLoad || !isLoading {
+                // Floating Chevrons (< and >) on sides (EPUB only)
+                if !book.isPDF {
+                    HStack {
+                        Button(action: { flipToPrevPage() }) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 24, weight: .light))
                             .foregroundColor(Color.primary.opacity(0.4))
@@ -463,6 +466,7 @@ struct EmbeddedReaderView: View {
                 .opacity(isControlsVisible || hasActivePopover ? 1.0 : 0.0)
                 .animation(.easeInOut(duration: 0.22), value: isControlsVisible || hasActivePopover)
                 .allowsHitTesting(true)
+                }
                 
                 // Floating Top Controls Bar (Pixel-perfect matching Screenshot NT3LMz)
                 VStack {
