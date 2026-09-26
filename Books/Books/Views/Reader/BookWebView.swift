@@ -614,7 +614,12 @@ struct BookWebView: NSViewRepresentable {
                     return Math.max(1, Math.ceil((columnsEl.scrollWidth - 10) / w));
                 }
                 
+                let initialSpreadApplied = (typeof targetInitialSpread !== 'number' || targetInitialSpread === 1);
+                
                 function reportMetrics() {
+                    if (!initialSpreadApplied && (targetInitialSpread > 1 || targetInitialSpread === -1)) {
+                        return;
+                    }
                     const total = getTotalSpreads();
                     const cur = currentSpread + 1;
                     const left = Math.max(0, total - cur);
@@ -631,25 +636,23 @@ struct BookWebView: NSViewRepresentable {
                 function postVisibleSnippet() {
                     try {
                         const spreadW = getSpreadWidth();
-                        const allEls = columnsEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, blockquote, li');
+                        const allEls = columnsEl.querySelectorAll('p, blockquote, div, h1, h2, h3, h4, h5, h6, li');
                         let snippet = '';
                         for (let i = 0; i < allEls.length; i++) {
+                            const text = (allEls[i].textContent || '').trim();
+                            if (text.length < 5) continue;
                             const rects = allEls[i].getClientRects();
                             let isVisible = false;
                             for (let j = 0; j < rects.length; j++) {
                                 const r = rects[j];
-                                if (r.width > 20 && r.bottom > 30 && r.top < window.innerHeight - 30 && r.left >= -20 && r.left < spreadW - 20) {
+                                if (r.width > 20 && r.height > 8 && r.bottom > 40 && r.top < window.innerHeight - 40 && r.left >= -25 && r.left < spreadW - 25) {
                                     isVisible = true;
                                     break;
                                 }
                             }
                             if (isVisible) {
-                                const text = allEls[i].textContent || '';
-                                const trimmed = text.trim();
-                                if (trimmed.length > 5) {
-                                    snippet = trimmed;
-                                    break;
-                                }
+                                snippet = text;
+                                break;
                             }
                         }
                         if (snippet.length > 0 && window.webkit && window.webkit.messageHandlers.visibleSnippet) {
@@ -1128,18 +1131,23 @@ struct BookWebView: NSViewRepresentable {
                     }
                 });
                 
-                let initialSpreadApplied = false;
                 function applyInitialSpread() {
                     if (initialSpreadApplied) return;
-                    if (typeof targetInitialSpread === 'number' && (targetInitialSpread > 1 || targetInitialSpread === -1 || targetInitialSpread >= 999999)) {
-                        const total = getTotalSpreads();
-                        if (total > 1 || document.readyState === 'complete') {
-                            goToSpread(targetInitialSpread);
-                            initialSpreadApplied = true;
-                        }
-                    } else {
-                        initialSpreadApplied = true;
+                    const total = getTotalSpreads();
+                    const textLen = (columnsEl ? (columnsEl.innerText || '').length : 0);
+                    // If content has substantial text, wait until columns expansion occurs
+                    if (textLen > 400 && total <= 1) {
+                        return;
                     }
+                    if (typeof targetInitialSpread === 'number' && (targetInitialSpread > 1 || targetInitialSpread === -1 || targetInitialSpread >= 999999)) {
+                        if (targetInitialSpread === -1 || targetInitialSpread >= 999999) {
+                            currentSpread = Math.max(0, total - 1);
+                        } else {
+                            currentSpread = Math.max(0, Math.min(total - 1, targetInitialSpread - 1));
+                        }
+                    }
+                    initialSpreadApplied = true;
+                    updateDisplay();
                 }
 
                 function getVisibleAnchor() {
@@ -1192,16 +1200,24 @@ struct BookWebView: NSViewRepresentable {
                     ro.observe(document.body);
                 }
                 
-                setTimeout(function() {
+                let checkAttempts = 0;
+                function checkLayoutAndApply() {
                     applyInitialSpread();
-                    reportMetrics();
-                    applySavedHighlights(savedHighlights);
-                }, 50);
-
-                setTimeout(function() {
-                    applyInitialSpread();
-                    reportMetrics();
-                }, 180);
+                    if (!initialSpreadApplied && checkAttempts < 30) {
+                        checkAttempts++;
+                        requestAnimationFrame(function() {
+                            setTimeout(checkLayoutAndApply, 35);
+                        });
+                    } else {
+                        if (!initialSpreadApplied) {
+                            initialSpreadApplied = true;
+                            updateDisplay();
+                        }
+                        reportMetrics();
+                        applySavedHighlights(savedHighlights);
+                    }
+                }
+                checkLayoutAndApply();
             </script>
         </body>
         </html>
