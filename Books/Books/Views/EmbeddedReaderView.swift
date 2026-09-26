@@ -9,6 +9,16 @@ import SwiftUI
 import WebKit
 import PDFKit
 
+struct ReaderSizePreferenceKey: PreferenceKey {
+    static var defaultValue: CGSize = CGSize(width: 800, height: 700)
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+        let n = nextValue()
+        if n.width > 50 && n.height > 50 {
+            value = n
+        }
+    }
+}
+
 struct EmbeddedReaderView: View {
     @Environment(\.dismiss) var dismiss
     var book: Book
@@ -84,6 +94,13 @@ struct EmbeddedReaderView: View {
     @State private var isHoveringScrubber: Bool = false
     @State private var userRequestedStop: Bool = false
     
+    // Continuous Tab Size & Viewport Geometry Tracking
+    @State private var readerViewSize: CGSize = CGSize(width: 800, height: 700)
+    @State private var observedScaleRatio: Double? = nil
+    @State private var scrubbingPagePreview: Int? = nil
+    @State private var showGoToPagePopover: Bool = false
+    @State private var targetPageInput: String = ""
+    
     // High-Precision Window & Reading Goals Focus Tracking
     @State private var hostingWindow: NSWindow? = nil
     @State private var lastTickTime: Date? = nil
@@ -94,14 +111,37 @@ struct EmbeddedReaderView: View {
         CoverExtractionService.shared.extractCover(book: book, width: 280, height: 420)
     }
     
+    private var tabGeometryScaleRatio: Double {
+        let w = max(320.0, Double(readerViewSize.width))
+        let h = max(400.0, Double(readerViewSize.height))
+        
+        let marginX: Double = isTwoPageSpread ? max(44.0, w * 0.05) : max(36.0, w * 0.08)
+        let contentW = max(220.0, w - marginX * 2.0)
+        let contentH = max(260.0, h - 136.0)
+        
+        let isTwoCol = isTwoPageSpread && w >= 700.0
+        let colCount: Double = isTwoCol ? 2.0 : 1.0
+        let gap: Double = isTwoCol ? 40.0 : 0.0
+        let colW = max(180.0, (contentW - gap) / colCount)
+        
+        let fSize = max(12.0, Double(fontSize))
+        let lHeight = max(1.1, Double(lineSpacing))
+        
+        let charsPerLine = colW / (fSize * 0.52)
+        let linesPerCol = contentH / (fSize * lHeight)
+        let wordsPerCol = (charsPerLine * linesPerCol) / 5.2
+        let wordsPerSpread = max(60.0, wordsPerCol * colCount)
+        
+        // Base estimation in epub_metadata is 260 words per single page
+        let ratio = 260.0 / wordsPerSpread
+        return max(0.12, min(5.0, ratio))
+    }
+    
     private var dynamicScaleRatio: Double {
-        if currentChapterIndex < spineBasePages.count && spineBasePages[currentChapterIndex] > 0 {
-            let base = Double(spineBasePages[currentChapterIndex])
-            let actual = Double(max(1, totalSpreadsInChapter))
-            let r = actual / base
-            return max(0.2, min(5.0, r))
+        if let obs = observedScaleRatio {
+            return max(0.15, min(5.0, 0.70 * obs + 0.30 * tabGeometryScaleRatio))
         }
-        return 1.0
+        return tabGeometryScaleRatio
     }
     
     private var overallTotalPages: Int {
@@ -125,7 +165,10 @@ struct EmbeddedReaderView: View {
         if currentChapterIndex < spineStartPages.count {
             let start = spineStartPages[currentChapterIndex]
             let scaledStart = Int(round(Double(start) * dynamicScaleRatio))
-            let offset = max(0, currentSpreadIndex - 1)
+            let chBase = currentChapterIndex < spineBasePages.count ? spineBasePages[currentChapterIndex] : 1
+            let chScaledSpreads = max(1, Int(round(Double(chBase) * dynamicScaleRatio)))
+            let progressFraction = Double(max(0, currentSpreadIndex - 1)) / Double(max(1, totalSpreadsInChapter))
+            let offset = Int(round(progressFraction * Double(max(1, chScaledSpreads - 1))))
             return max(1, min(overallTotalPages, scaledStart + offset))
         }
         if totalChapters <= 1 {
@@ -292,6 +335,15 @@ struct EmbeddedReaderView: View {
             themeBackgroundColor
                 .ignoresSafeArea()
             
+            // Continuous Tab Size & Viewport Geometry Tracking
+            Color.clear
+                .background(
+                    GeometryReader { geo in
+                        Color.clear
+                            .preference(key: ReaderSizePreferenceKey.self, value: geo.size)
+                    }
+                )
+            
             if isInitialBookLoad && isLoading {
                 VStack(spacing: 24) {
                     if let img = coverImage {
@@ -440,8 +492,15 @@ struct EmbeddedReaderView: View {
                     onPageMetrics: { cur, tot, left in
                         DispatchQueue.main.async {
                             self.currentSpreadIndex = cur
+                            self.seekToSpread = cur
                             self.totalSpreadsInChapter = max(1, tot)
                             self.pagesLeftInChapter = max(0, left)
+                            if self.currentChapterIndex < self.spineBasePages.count {
+                                let base = self.spineBasePages[self.currentChapterIndex]
+                                if base >= 3 {
+                                    self.observedScaleRatio = Double(tot) / Double(base)
+                                }
+                            }
                             self.updateBookmarkState()
                             CurrentlyReadingManager.shared.markAsReading(book: self.book, chapterIndex: self.currentChapterIndex, spreadIndex: cur)
                         }
@@ -847,39 +906,75 @@ struct EmbeddedReaderView: View {
                     // Native Apple Books Minimal Page Indicator & Scrubber (Screenshot RalbJx)
                     //
                     VStack(spacing: 5) {
-                        HStack(spacing: 7) {
-                            Text(pagesLeftText)
-                                .font(.system(size: 11.5, weight: .medium))
-                                .foregroundColor(Color.secondary.opacity(0.95))
-                            
-                            Text("•")
-                                .font(.system(size: 10, weight: .regular))
-                                .foregroundColor(Color.secondary.opacity(0.4))
-                            
-                            if book.isPDF {
-                                Text("Page \(overallCurrentPage) of \(overallTotalPages)")
-                                    .font(.system(size: 11.5, weight: .regular))
-                                    .foregroundColor(Color.secondary.opacity(0.80))
-                            } else {
-                                Text("Page \(currentSpreadIndex) of \(totalSpreadsInChapter)")
-                                    .font(.system(size: 11.5, weight: .regular))
-                                    .foregroundColor(Color.secondary.opacity(0.80))
+                        Button(action: {
+                            targetPageInput = "\(overallCurrentPage)"
+                            showGoToPagePopover = true
+                        }) {
+                            HStack(spacing: 7) {
+                                Text(pagesLeftText)
+                                    .font(.system(size: 11.5, weight: .medium))
+                                    .foregroundColor(Color.secondary.opacity(0.95))
                                 
-                                if overallTotalPages > totalSpreadsInChapter {
-                                    Text("(\(overallCurrentPage) of \(overallTotalPages))")
-                                        .font(.system(size: 11, weight: .regular))
-                                        .foregroundColor(Color.secondary.opacity(0.60))
+                                Text("•")
+                                    .font(.system(size: 10, weight: .regular))
+                                    .foregroundColor(Color.secondary.opacity(0.4))
+                                
+                                if let preview = scrubbingPagePreview {
+                                    Text("Go to Page \(preview) of \(overallTotalPages)")
+                                        .font(.system(size: 11.5, weight: .semibold))
+                                        .foregroundColor(Color.accentColor)
+                                } else if book.isPDF {
+                                    Text("Page \(overallCurrentPage) of \(overallTotalPages)")
+                                        .font(.system(size: 11.5, weight: .regular))
+                                        .foregroundColor(Color.secondary.opacity(0.80))
+                                } else {
+                                    Text("Page \(currentSpreadIndex) of \(totalSpreadsInChapter)")
+                                        .font(.system(size: 11.5, weight: .regular))
+                                        .foregroundColor(Color.secondary.opacity(0.80))
+                                    
+                                    if overallTotalPages > totalSpreadsInChapter {
+                                        Text("(\(overallCurrentPage) of \(overallTotalPages))")
+                                            .font(.system(size: 11, weight: .regular))
+                                            .foregroundColor(Color.secondary.opacity(0.60))
+                                    }
                                 }
                             }
+                            .padding(.vertical, 3)
+                            .padding(.horizontal, 10)
+                            .background(
+                                Capsule()
+                                    .fill(Color(nsColor: .windowBackgroundColor).opacity(0.85))
+                                    .background(.ultraThinMaterial, in: Capsule())
+                            )
+                            .opacity(0.92)
                         }
-                        .padding(.vertical, 3)
-                        .padding(.horizontal, 10)
-                        .background(
-                            Capsule()
-                                .fill(Color(nsColor: .windowBackgroundColor).opacity(0.85))
-                                .background(.ultraThinMaterial, in: Capsule())
-                        )
-                        .opacity(0.92)
+                        .buttonStyle(.plain)
+                        .popover(isPresented: $showGoToPagePopover) {
+                            VStack(spacing: 10) {
+                                Text("Go to Page")
+                                    .font(.system(size: 13, weight: .semibold))
+                                HStack(spacing: 8) {
+                                    TextField("1–\(overallTotalPages)", text: $targetPageInput)
+                                        .textFieldStyle(.roundedBorder)
+                                        .frame(width: 80)
+                                        .onSubmit {
+                                            if let p = Int(targetPageInput) {
+                                                jumpToBookPage(p)
+                                            }
+                                            showGoToPagePopover = false
+                                        }
+                                    Button("Go") {
+                                        if let p = Int(targetPageInput) {
+                                            jumpToBookPage(p)
+                                        }
+                                        showGoToPagePopover = false
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.small)
+                                }
+                            }
+                            .padding(14)
+                        }
                         
                         // Scrubber Capsule Handle / Drag Track (fades on hover)
                         GeometryReader { geo in
@@ -911,60 +1006,42 @@ struct EmbeddedReaderView: View {
                                         registerMouseActivity()
                                         guard maxOffset > 0 else { return }
                                         let pct = max(0, min(1, (val.location.x - capsuleWidth / 2) / maxOffset))
-                                        if book.isPDF {
-                                            let targetPage = min(overallTotalPages - 1, max(0, Int(pct * Double(overallTotalPages))))
-                                            if targetPage != currentChapterIndex {
-                                                targetPDFPage = targetPage
-                                                currentChapterIndex = targetPage
-                                                updateBookmarkState()
-                                            }
-                                        } else {
-                                            // Dynamic book-wide page & chapter scrubbing for EPUB
-                                            let totalBookPages = max(1, overallTotalPages)
-                                            let targetBookPage = max(1, min(totalBookPages, Int(round(pct * Double(totalBookPages - 1))) + 1))
-                                            
+                                        let totalBookPages = max(1, overallTotalPages)
+                                        let targetBookPage = max(1, min(totalBookPages, Int(round(pct * Double(totalBookPages - 1))) + 1))
+                                        scrubbingPagePreview = targetBookPage
+                                        
+                                        // If scrubbing within same chapter, live update the spread
+                                        if !book.isPDF && !spineStartPages.isEmpty {
                                             var targetChapter = 0
-                                            var targetSpreadInChapter = 1
-                                            
-                                            if !spineStartPages.isEmpty {
-                                                for (idx, startPage) in spineStartPages.enumerated() {
-                                                    let scaledStart = Int(round(Double(startPage) * dynamicScaleRatio))
-                                                    if scaledStart <= targetBookPage {
-                                                        targetChapter = idx
-                                                    } else {
-                                                        break
-                                                    }
+                                            for (idx, startPage) in spineStartPages.enumerated() {
+                                                let scaledStart = Int(round(Double(startPage) * dynamicScaleRatio))
+                                                if scaledStart <= targetBookPage {
+                                                    targetChapter = idx
+                                                } else {
+                                                    break
                                                 }
-                                                let chapterStart = Int(round(Double(spineStartPages[targetChapter]) * dynamicScaleRatio))
-                                                let offset = max(0, targetBookPage - chapterStart)
-                                                targetSpreadInChapter = max(1, offset + 1)
-                                            } else {
-                                                let totalUnits = Double(totalChapters * max(1, totalSpreadsInChapter))
-                                                let currentUnit = Int(round(pct * (totalUnits - 1)))
-                                                targetChapter = min(totalChapters - 1, currentUnit / max(1, totalSpreadsInChapter))
-                                                targetSpreadInChapter = max(1, (currentUnit % max(1, totalSpreadsInChapter)) + 1)
                                             }
-                                            
-                                            // If dragging to the very end of the book, target the last spread
-                                            if pct >= 0.995 {
-                                                targetChapter = totalChapters - 1
-                                                targetSpreadInChapter = -1
-                                            }
-                                            
-                                            if targetChapter != currentChapterIndex {
-                                                currentChapterIndex = targetChapter
-                                                seekToSpread = targetSpreadInChapter
-                                                loadChapter(targetSpread: targetSpreadInChapter)
-                                            } else {
-                                                if targetSpreadInChapter != currentSpreadIndex {
-                                                    currentSpreadIndex = max(1, targetSpreadInChapter)
-                                                    seekToSpread = targetSpreadInChapter
+                                            if targetChapter == currentChapterIndex {
+                                                let chStart = Int(round(Double(spineStartPages[targetChapter]) * dynamicScaleRatio))
+                                                let chBase = targetChapter < spineBasePages.count ? spineBasePages[targetChapter] : 1
+                                                let chScaledSpreads = max(1, Int(round(Double(chBase) * dynamicScaleRatio)))
+                                                let offset = max(0, targetBookPage - chStart)
+                                                let progressInChapter = Double(offset) / Double(max(1, chScaledSpreads))
+                                                let clampedProg = max(0.0, min(1.0, progressInChapter))
+                                                let targetSpread = max(1, min(totalSpreadsInChapter, Int(round(clampedProg * Double(totalSpreadsInChapter - 1))) + 1))
+                                                if targetSpread != currentSpreadIndex {
+                                                    currentSpreadIndex = targetSpread
+                                                    seekToSpread = targetSpread
                                                 }
                                             }
                                         }
                                     }
                                     .onEnded { _ in
                                         registerMouseActivity()
+                                        if let target = scrubbingPagePreview {
+                                            jumpToBookPage(target)
+                                            scrubbingPagePreview = nil
+                                        }
                                     }
                             )
                             .onHover { h in
@@ -1032,6 +1109,11 @@ struct EmbeddedReaderView: View {
             self.lastTickTime = Date()
             self.lastActivityTime = Date()
         })
+        .onPreferenceChange(ReaderSizePreferenceKey.self) { sz in
+            if sz.width > 50 && sz.height > 50 && sz != self.readerViewSize {
+                self.readerViewSize = sz
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { notif in
             if let w = notif.object as? NSWindow, (self.hostingWindow == nil || w == self.hostingWindow) {
                 self.lastTickTime = nil
@@ -2100,6 +2182,66 @@ struct EmbeddedReaderView: View {
                 }
             }
         }
+    }
+    
+    func jumpToBookPage(_ targetPage: Int) {
+        if book.isPDF {
+            let p = max(0, min(totalChapters - 1, targetPage - 1))
+            targetPDFPage = p
+            currentChapterIndex = p
+            updateBookmarkState()
+            return
+        }
+        let totalBookPages = max(1, overallTotalPages)
+        let p = max(1, min(totalBookPages, targetPage))
+        
+        var targetChapter = 0
+        var targetSpreadInChapter = 1
+        
+        if !spineStartPages.isEmpty {
+            for (idx, startPage) in spineStartPages.enumerated() {
+                let scaledStart = Int(round(Double(startPage) * dynamicScaleRatio))
+                if scaledStart <= p {
+                    targetChapter = idx
+                } else {
+                    break
+                }
+            }
+            let chapterStart = Int(round(Double(spineStartPages[targetChapter]) * dynamicScaleRatio))
+            let chBase = targetChapter < spineBasePages.count ? spineBasePages[targetChapter] : 1
+            let chScaledSpreads = max(1, Int(round(Double(chBase) * dynamicScaleRatio)))
+            let offset = max(0, p - chapterStart)
+            let progressInChapter = Double(offset) / Double(max(1, chScaledSpreads))
+            let clampedProg = max(0.0, min(1.0, progressInChapter))
+            
+            if targetChapter == currentChapterIndex {
+                targetSpreadInChapter = max(1, min(totalSpreadsInChapter, Int(round(clampedProg * Double(totalSpreadsInChapter - 1))) + 1))
+            } else {
+                targetSpreadInChapter = max(1, Int(round(clampedProg * Double(chScaledSpreads - 1))) + 1)
+            }
+        } else {
+            let totalUnits = Double(totalChapters * max(1, totalSpreadsInChapter))
+            let pct = Double(p - 1) / Double(max(1, totalBookPages - 1))
+            let currentUnit = Int(round(pct * (totalUnits - 1)))
+            targetChapter = min(totalChapters - 1, currentUnit / max(1, totalSpreadsInChapter))
+            targetSpreadInChapter = max(1, (currentUnit % max(1, totalSpreadsInChapter)) + 1)
+        }
+        
+        if p >= totalBookPages {
+            targetChapter = totalChapters - 1
+            targetSpreadInChapter = -1
+        }
+        
+        if targetChapter != currentChapterIndex {
+            currentChapterIndex = targetChapter
+            seekToSpread = targetSpreadInChapter
+            loadChapter(targetSpread: targetSpreadInChapter)
+        } else {
+            seekToSpread = targetSpreadInChapter
+            currentSpreadIndex = max(1, targetSpreadInChapter)
+        }
+        updateBookmarkState()
+        CurrentlyReadingManager.shared.markAsReading(book: self.book, chapterIndex: self.currentChapterIndex, spreadIndex: self.currentSpreadIndex)
     }
     
     func loadChapter(targetSpread: Int = 1, preserveAudio: Bool = false) {

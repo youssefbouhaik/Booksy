@@ -95,6 +95,7 @@ struct BookWebView: NSViewRepresentable {
                    let cur = dict["current"] as? Int,
                    let tot = dict["total"] as? Int,
                    let left = dict["left"] as? Int {
+                    self.lastSeekSpread = cur
                     parent.onPageMetrics(cur, tot, left)
                 }
             } else if message.name == "mouseActivity" {
@@ -629,14 +630,22 @@ struct BookWebView: NSViewRepresentable {
                 
                 function postVisibleSnippet() {
                     try {
-                        var spreadWidth = getSpreadWidth();
-                        var allEls = columnsEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, blockquote, li');
-                        var snippet = '';
-                        for (var i = 0; i < allEls.length; i++) {
-                            var rect = allEls[i].getBoundingClientRect();
-                            if (rect.width > 0 && rect.bottom > 20 && rect.top < window.innerHeight - 20 && rect.left >= -20 && rect.left < spreadWidth - 20) {
-                                var text = allEls[i].textContent || '';
-                                var trimmed = text.trim();
+                        const spreadW = getSpreadWidth();
+                        const allEls = columnsEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, blockquote, li');
+                        let snippet = '';
+                        for (let i = 0; i < allEls.length; i++) {
+                            const rects = allEls[i].getClientRects();
+                            let isVisible = false;
+                            for (let j = 0; j < rects.length; j++) {
+                                const r = rects[j];
+                                if (r.width > 20 && r.bottom > 30 && r.top < window.innerHeight - 30 && r.left >= -20 && r.left < spreadW - 20) {
+                                    isVisible = true;
+                                    break;
+                                }
+                            }
+                            if (isVisible) {
+                                const text = allEls[i].textContent || '';
+                                const trimmed = text.trim();
                                 if (trimmed.length > 5) {
                                     snippet = trimmed;
                                     break;
@@ -1133,12 +1142,45 @@ struct BookWebView: NSViewRepresentable {
                     }
                 }
 
+                function getVisibleAnchor() {
+                    try {
+                        const spreadW = getSpreadWidth();
+                        const allEls = columnsEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, blockquote, li, img');
+                        for (let i = 0; i < allEls.length; i++) {
+                            const rects = allEls[i].getClientRects();
+                            for (let j = 0; j < rects.length; j++) {
+                                const r = rects[j];
+                                if (r.width > 10 && r.height > 8 && r.bottom > 40 && r.top < window.innerHeight - 40 && r.left >= -10 && r.left < spreadW - 10) {
+                                    return allEls[i];
+                                }
+                            }
+                        }
+                    } catch(e) {}
+                    return null;
+                }
+
+                let lastSpreadWidth = window.innerWidth;
+
                 // Continuous Dynamic Page Calculation on Window Resizing
                 function handleResize() {
                     applyInitialSpread();
                     const totalNow = getTotalSpreads();
-                    currentSpread = Math.max(0, Math.min(totalNow - 1, currentSpread));
-                    columnsEl.style.transform = 'translateX(' + (-currentSpread * getSpreadWidth()) + 'px)';
+                    const spreadW = getSpreadWidth();
+                    
+                    if (Math.abs(spreadW - lastSpreadWidth) > 5) {
+                        const anchor = getVisibleAnchor();
+                        if (anchor && typeof anchor.offsetLeft === 'number') {
+                            const newSpread = Math.floor(anchor.offsetLeft / spreadW);
+                            currentSpread = Math.max(0, Math.min(totalNow - 1, newSpread));
+                        } else {
+                            currentSpread = Math.max(0, Math.min(totalNow - 1, currentSpread));
+                        }
+                        lastSpreadWidth = spreadW;
+                    } else {
+                        currentSpread = Math.max(0, Math.min(totalNow - 1, currentSpread));
+                    }
+                    
+                    columnsEl.style.transform = 'translateX(' + (-currentSpread * spreadW) + 'px)';
                     reportMetrics();
                 }
                 window.addEventListener('resize', handleResize);
