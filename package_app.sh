@@ -8,7 +8,10 @@ USER_APP_PATH="$HOME/Applications/$APP_NAME"
 DESKTOP_PATH="$HOME/Desktop/$APP_NAME"
 WORKING_DIR_APP="$HOME/Desktop/Working_dir_Booksy/$APP_NAME"
 APP_PATH="$SYS_APP_PATH"
-ICON_SOURCE="$HOME/.books1_cache/icons/AppIcon_Coral.icns"
+ICON_SOURCE="$SOURCE_DIR/AppIcon_Coral.icns"
+if [ ! -f "$ICON_SOURCE" ]; then
+    ICON_SOURCE="$HOME/.books1_cache/icons/AppIcon_Coral.icns"
+fi
 
 echo "==> Compiling Booksy native macOS binary..."
 cd "$SOURCE_DIR"
@@ -39,7 +42,9 @@ cat << 'PLIST' > "$APP_PATH/Contents/Info.plist"
     <key>CFBundleExecutable</key>
     <string>Booksy</string>
     <key>CFBundleIconFile</key>
-    <string>AppIcon.icns</string>
+    <string>AppIcon</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.booksy.app</string>
     <key>CFBundleName</key>
@@ -151,15 +156,17 @@ rm -rf "$USER_APP_PATH" "$DESKTOP_PATH" "$WORKING_DIR_APP"
 touch "$APP_PATH"
 
 echo "==> Setting Finder full-bleed custom icon via NSWorkspace..."
-swift - << 'SWIFT'
+swift - "$ICON_SOURCE" "$APP_PATH" << 'SWIFT'
 import Cocoa
 
-let iconPath = ("~/.books1_cache/icons/AppIcon_Coral.icns" as NSString).expandingTildeInPath
+guard CommandLine.arguments.count > 2 else { exit(0) }
+let iconPath = CommandLine.arguments[1]
+let appPath = CommandLine.arguments[2]
+
 if let img = NSImage(contentsOfFile: iconPath) {
-    let p = "/Applications/Booksy.app"
-    if FileManager.default.fileExists(atPath: p) {
-        let res = NSWorkspace.shared.setIcon(img, forFile: p, options: [])
-        print("Set Finder custom icon for \(p): \(res)")
+    if FileManager.default.fileExists(atPath: appPath) {
+        let res = NSWorkspace.shared.setIcon(img, forFile: appPath, options: [])
+        print("Set Finder custom icon for \(appPath): \(res)")
     }
 }
 SWIFT
