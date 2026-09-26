@@ -12,6 +12,23 @@ import PDFKit
 
 class CustomPDFView: PDFView {
     var onAddAnnotation: ((String, String, String, Int) -> Void)? = nil
+    var onMouseActivity: (() -> Void)? = nil
+    private var trackingArea: NSTrackingArea?
+    
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+        let opts: NSTrackingArea.Options = [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect]
+        trackingArea = NSTrackingArea(rect: bounds, options: opts, owner: self, userInfo: nil)
+        addTrackingArea(trackingArea!)
+    }
+    
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        onMouseActivity?()
+    }
     
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = super.menu(for: event) ?? NSMenu()
@@ -158,6 +175,7 @@ struct NativePDFKitView: NSViewRepresentable {
     @Binding var activePDFView: PDFView?
     var onPageChange: ((Int, Int) -> Void)? = nil
     var onAddAnnotation: ((String, String, String, Int) -> Void)? = nil
+    var onMouseActivity: (() -> Void)? = nil
     
     private var resolvedURL: URL {
         let p = (url.path as NSString).expandingTildeInPath
@@ -189,6 +207,7 @@ struct NativePDFKitView: NSViewRepresentable {
     func makeNSView(context: Context) -> CustomPDFView {
         let pdfView = CustomPDFView()
         pdfView.onAddAnnotation = onAddAnnotation
+        pdfView.onMouseActivity = onMouseActivity
         if let doc = PDFDocument(url: resolvedURL) {
             pdfView.document = doc
         }
@@ -221,6 +240,7 @@ struct NativePDFKitView: NSViewRepresentable {
     
     func updateNSView(_ pdfView: CustomPDFView, context: Context) {
         pdfView.onAddAnnotation = onAddAnnotation
+        pdfView.onMouseActivity = onMouseActivity
         
         if pdfView.backgroundColor != themeBackgroundColor {
             pdfView.backgroundColor = themeBackgroundColor

@@ -337,6 +337,9 @@ struct EmbeddedReaderView: View {
                         DispatchQueue.main.async {
                             self.addAnnotation(text: text, note: note, colorHex: colorHex)
                         }
+                    },
+                    onMouseActivity: {
+                        registerMouseActivity()
                     }
                 )
                 .ignoresSafeArea()
@@ -458,18 +461,20 @@ struct EmbeddedReaderView: View {
                 VStack {
                     ZStack(alignment: .center) {
                         // Dead-Center Floating Title Capsule (mathematically centered on central spine crease)
-                        Text(book.title)
-                            .font(.system(size: 13, weight: .medium, design: .serif))
-                            .lineLimit(1)
-                            .foregroundColor(.primary.opacity(0.75))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 5)
-                            .background(
-                                Capsule()
-                                    .fill(Color(nsColor: .windowBackgroundColor).opacity(0.75))
-                                    .background(.ultraThinMaterial, in: Capsule())
-                                    .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 1)
-                            )
+                        if !book.isPDF {
+                            Text(book.title)
+                                .font(.system(size: 13, weight: .medium, design: .serif))
+                                .lineLimit(1)
+                                .foregroundColor(.primary.opacity(0.75))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 5)
+                                .background(
+                                    Capsule()
+                                        .fill(Color(nsColor: .windowBackgroundColor).opacity(0.75))
+                                        .background(.ultraThinMaterial, in: Capsule())
+                                        .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 1)
+                                )
+                        }
                         
                         HStack(alignment: .center) {
                             // Left Floating Capsule (TOC, Bookmarks list, Notes)
