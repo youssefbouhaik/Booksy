@@ -10,10 +10,208 @@ import SwiftUI
 import AppKit
 import PDFKit
 
+// MARK: - Floating PDF Annotation Bar HUD
+class PDFAnnotationBarView: NSVisualEffectView {
+    var onColor: ((String, NSColor) -> Void)?
+    var onUnderline: (() -> Void)?
+    var onStrike: (() -> Void)?
+    var onNote: (() -> Void)?
+    var onCopy: (() -> Void)?
+    var onDelete: (() -> Void)?
+    
+    private var deleteButton: NSButton?
+    
+    let palette: [(name: String, hex: String, color: NSColor)] = [
+        ("Yellow", "#FFE270", NSColor(srgbRed: 1.0, green: 0.886, blue: 0.439, alpha: 0.65)),
+        ("Green", "#A8F596", NSColor(srgbRed: 0.659, green: 0.961, blue: 0.588, alpha: 0.65)),
+        ("Blue", "#92D6FF", NSColor(srgbRed: 0.573, green: 0.839, blue: 1.0, alpha: 0.65)),
+        ("Pink", "#FFB3D9", NSColor(srgbRed: 1.0, green: 0.702, blue: 0.851, alpha: 0.65)),
+        ("Purple", "#D2B4FF", NSColor(srgbRed: 0.824, green: 0.706, blue: 1.0, alpha: 0.65))
+    ]
+    
+    init() {
+        super.init(frame: NSRect(x: 0, y: 0, width: 285, height: 36))
+        self.material = .hudWindow
+        self.state = .active
+        self.blendingMode = .withinWindow
+        self.wantsLayer = true
+        self.layer?.cornerRadius = 18
+        self.layer?.masksToBounds = true
+        self.shadow = NSShadow()
+        self.shadow?.shadowColor = NSColor.black.withAlphaComponent(0.28)
+        self.shadow?.shadowBlurRadius = 12
+        self.shadow?.shadowOffset = NSSize(width: 0, height: -3)
+        self.isHidden = true
+        
+        setupViews()
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    func setHasActiveAnnotation(_ hasActive: Bool) {
+        deleteButton?.isHidden = !hasActive
+        let w: CGFloat = hasActive ? 320 : 285
+        var f = self.frame
+        f.size.width = w
+        self.frame = f
+    }
+    
+    private func setupViews() {
+        let stack = NSStackView()
+        stack.orientation = .horizontal
+        stack.spacing = 7
+        stack.alignment = .centerY
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+        
+        // 5 Color Circles
+        for item in palette {
+            let btn = NSButton(frame: NSRect(x: 0, y: 0, width: 18, height: 18))
+            btn.title = ""
+            btn.bezelStyle = .circular
+            btn.isBordered = false
+            btn.wantsLayer = true
+            btn.layer?.cornerRadius = 9
+            btn.layer?.masksToBounds = true
+            btn.layer?.backgroundColor = item.color.cgColor
+            btn.layer?.borderWidth = 1.0
+            btn.layer?.borderColor = NSColor.white.withAlphaComponent(0.4).cgColor
+            btn.target = self
+            btn.action = #selector(colorClicked(_:))
+            btn.toolTip = "\(item.name) Highlight"
+            btn.widthAnchor.constraint(equalToConstant: 18).isActive = true
+            btn.heightAnchor.constraint(equalToConstant: 18).isActive = true
+            stack.addArrangedSubview(btn)
+        }
+        
+        // Divider
+        let sep = NSBox()
+        sep.boxType = .separator
+        sep.translatesAutoresizingMaskIntoConstraints = false
+        sep.widthAnchor.constraint(equalToConstant: 1).isActive = true
+        sep.heightAnchor.constraint(equalToConstant: 16).isActive = true
+        stack.addArrangedSubview(sep)
+        
+        // Underline
+        let uBtn = makeToolButton(title: "U", font: NSFont.boldSystemFont(ofSize: 12), toolTip: "Underline", action: #selector(underlineClicked))
+        stack.addArrangedSubview(uBtn)
+        
+        // Strike
+        let sBtn = makeToolButton(title: "S", font: NSFont.boldSystemFont(ofSize: 12), toolTip: "Strikethrough", action: #selector(strikeClicked))
+        stack.addArrangedSubview(sBtn)
+        
+        // Note
+        let noteImg = NSImage(systemSymbolName: "square.and.pencil", accessibilityDescription: "Add Note")
+        let noteBtn = makeIconButton(image: noteImg, toolTip: "Add / Edit Note", action: #selector(noteClicked))
+        stack.addArrangedSubview(noteBtn)
+        
+        // Copy
+        let copyImg = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: "Copy")
+        let copyBtn = makeIconButton(image: copyImg, toolTip: "Copy Quote", action: #selector(copyClicked))
+        stack.addArrangedSubview(copyBtn)
+        
+        // Delete
+        let delImg = NSImage(systemSymbolName: "trash", accessibilityDescription: "Delete")
+        let delBtn = makeIconButton(image: delImg, toolTip: "Delete Annotation", action: #selector(deleteClicked))
+        delBtn.contentTintColor = NSColor.systemRed
+        delBtn.isHidden = true
+        self.deleteButton = delBtn
+        stack.addArrangedSubview(delBtn)
+    }
+    
+    private func makeToolButton(title: String, font: NSFont, toolTip: String, action: Selector) -> NSButton {
+        let btn = NSButton(title: title, target: self, action: action)
+        btn.bezelStyle = .inline
+        btn.isBordered = false
+        btn.font = font
+        btn.toolTip = toolTip
+        btn.contentTintColor = .white
+        return btn
+    }
+    
+    private func makeIconButton(image: NSImage?, toolTip: String, action: Selector) -> NSButton {
+        let btn = NSButton(image: image ?? NSImage(), target: self, action: action)
+        btn.bezelStyle = .inline
+        btn.isBordered = false
+        btn.toolTip = toolTip
+        btn.contentTintColor = .white
+        btn.imageScaling = .scaleProportionallyDown
+        btn.widthAnchor.constraint(equalToConstant: 20).isActive = true
+        btn.heightAnchor.constraint(equalToConstant: 20).isActive = true
+        return btn
+    }
+    
+    @objc private func colorClicked(_ sender: NSButton) {
+        guard let stack = subviews.first as? NSStackView else { return }
+        let colorButtons = stack.arrangedSubviews.filter { $0 is NSButton && ($0 as! NSButton).title.isEmpty && $0 != deleteButton }
+        if let idx = colorButtons.firstIndex(of: sender), idx < palette.count {
+            let item = palette[idx]
+            onColor?(item.hex, item.color)
+        } else {
+            onColor?(palette[0].hex, palette[0].color)
+        }
+    }
+    
+    @objc private func underlineClicked() { onUnderline?() }
+    @objc private func strikeClicked() { onStrike?() }
+    @objc private func noteClicked() { onNote?() }
+    @objc private func copyClicked() { onCopy?() }
+    @objc private func deleteClicked() { onDelete?() }
+}
+
 class CustomPDFView: PDFView {
     var onAddAnnotation: ((String, String, String, Int) -> Void)? = nil
+    var onPromptNote: ((String, String, String, Int) -> Void)? = nil
+    var onDeleteAnnotation: ((String, Int) -> Void)? = nil
     var onMouseActivity: (() -> Void)? = nil
+    
     private var trackingArea: NSTrackingArea?
+    private var annotationBar: PDFAnnotationBarView!
+    private var activeAnnotation: PDFAnnotation? = nil
+    private var activePage: PDFPage? = nil
+    
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setupAnnotationBar()
+    }
+    
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupAnnotationBar()
+    }
+    
+    private func setupAnnotationBar() {
+        annotationBar = PDFAnnotationBarView()
+        addSubview(annotationBar)
+        
+        annotationBar.onColor = { [weak self] hex, col in
+            self?.applyColorToSelectionOrAnnotation(hex: hex, color: col)
+        }
+        annotationBar.onUnderline = { [weak self] in
+            self?.underlineCurrentSelection()
+        }
+        annotationBar.onStrike = { [weak self] in
+            self?.strikeCurrentSelection()
+        }
+        annotationBar.onNote = { [weak self] in
+            self?.promptNoteForSelectionOrAnnotation()
+        }
+        annotationBar.onCopy = { [weak self] in
+            self?.copySelectedText()
+        }
+        annotationBar.onDelete = { [weak self] in
+            self?.deleteActiveAnnotation()
+        }
+    }
     
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -30,30 +228,230 @@ class CustomPDFView: PDFView {
         onMouseActivity?()
     }
     
+    override func mouseUp(with event: NSEvent) {
+        super.mouseUp(with: event)
+        onMouseActivity?()
+        
+        if let sel = self.currentSelection, let text = sel.string, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            showBarForSelection(sel)
+        }
+    }
+    
+    override func mouseDown(with event: NSEvent) {
+        let pointInView = convert(event.locationInWindow, from: nil)
+        
+        // If clicking inside the annotation bar, let the bar handle it
+        if !annotationBar.isHidden && NSPointInRect(pointInView, annotationBar.frame) {
+            super.mouseDown(with: event)
+            return
+        }
+        
+        super.mouseDown(with: event)
+        
+        // Check if user clicked an existing annotation
+        if let page = self.page(for: pointInView, nearest: false) {
+            let pagePoint = convert(pointInView, to: page)
+            if let annot = page.annotation(at: pagePoint),
+               (annot.type == "Highlight" || annot.type == "Underline" || annot.type == "StrikeOut" || annot.type == "Text") {
+                showBarForAnnotation(annot, on: page)
+                return
+            }
+        }
+        
+        // Hide bar if clicking blank area and no selection
+        if currentSelection == nil || currentSelection?.string?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+            hideAnnotationBar()
+        }
+    }
+    
+    func showBarForSelection(_ sel: PDFSelection) {
+        guard let page = sel.pages.first else { return }
+        activeAnnotation = nil
+        activePage = page
+        annotationBar.setHasActiveAnnotation(false)
+        
+        let boundsOnPage = sel.bounds(for: page)
+        let viewRect = convert(boundsOnPage, from: page)
+        positionBar(over: viewRect)
+    }
+    
+    func showBarForAnnotation(_ annot: PDFAnnotation, on page: PDFPage) {
+        activeAnnotation = annot
+        activePage = page
+        annotationBar.setHasActiveAnnotation(true)
+        
+        let viewRect = convert(annot.bounds, from: page)
+        positionBar(over: viewRect)
+    }
+    
+    private func positionBar(over viewRect: NSRect) {
+        let barW = annotationBar.frame.width
+        let barH = annotationBar.frame.height
+        let x = max(16, min(bounds.width - barW - 16, viewRect.midX - barW / 2))
+        var y = viewRect.maxY + 10
+        if y + barH > bounds.height - 12 {
+            y = max(12, viewRect.minY - barH - 10)
+        }
+        annotationBar.frame = NSRect(x: x, y: y, width: barW, height: barH)
+        annotationBar.isHidden = false
+        annotationBar.alphaValue = 1.0
+    }
+    
+    func hideAnnotationBar() {
+        annotationBar.isHidden = true
+        activeAnnotation = nil
+    }
+    
+    private func applyColorToSelectionOrAnnotation(hex: String, color: NSColor) {
+        if let annot = activeAnnotation {
+            annot.color = color
+            saveDocumentIfPossible()
+            if let page = activePage, let doc = document {
+                let pIdx = doc.index(for: page)
+                let text = annot.contents ?? ""
+                onAddAnnotation?(text, annot.contents ?? "", hex, pIdx)
+            }
+            hideAnnotationBar()
+            return
+        }
+        
+        guard let sel = currentSelection else { return }
+        for page in sel.pages {
+            // Line-by-line selection for neat highlights
+            let lines = sel.selectionsByLine()
+            let targets = lines.isEmpty ? [sel] : lines
+            for lineSel in targets {
+                let lineBounds = lineSel.bounds(for: page)
+                if lineBounds.width > 0 && lineBounds.height > 0 {
+                    let annot = PDFAnnotation(bounds: lineBounds, forType: .highlight, withProperties: nil)
+                    annot.color = color
+                    page.addAnnotation(annot)
+                }
+            }
+        }
+        saveDocumentIfPossible()
+        if let page = sel.pages.first, let doc = document, let text = sel.string {
+            let pageIdx = doc.index(for: page)
+            onAddAnnotation?(text.trimmingCharacters(in: .whitespacesAndNewlines), "", hex, pageIdx)
+        }
+        clearSelection()
+        hideAnnotationBar()
+    }
+    
+    @objc func highlightYellow() { applyColorToSelectionOrAnnotation(hex: "#FFE270", color: NSColor(srgbRed: 1.0, green: 0.886, blue: 0.439, alpha: 0.65)) }
+    @objc func highlightGreen() { applyColorToSelectionOrAnnotation(hex: "#A8F596", color: NSColor(srgbRed: 0.659, green: 0.961, blue: 0.588, alpha: 0.65)) }
+    @objc func highlightBlue() { applyColorToSelectionOrAnnotation(hex: "#92D6FF", color: NSColor(srgbRed: 0.573, green: 0.839, blue: 1.0, alpha: 0.65)) }
+    @objc func highlightPink() { applyColorToSelectionOrAnnotation(hex: "#FFB3D9", color: NSColor(srgbRed: 1.0, green: 0.702, blue: 0.851, alpha: 0.65)) }
+    @objc func highlightPurple() { applyColorToSelectionOrAnnotation(hex: "#D2B4FF", color: NSColor(srgbRed: 0.824, green: 0.706, blue: 1.0, alpha: 0.65)) }
+    
+    @objc func underlineCurrentSelection() {
+        guard let sel = currentSelection else { return }
+        for page in sel.pages {
+            let lines = sel.selectionsByLine()
+            let targets = lines.isEmpty ? [sel] : lines
+            for lineSel in targets {
+                let bounds = lineSel.bounds(for: page)
+                if bounds.width > 0 && bounds.height > 0 {
+                    let annot = PDFAnnotation(bounds: bounds, forType: .underline, withProperties: nil)
+                    annot.color = NSColor.systemOrange
+                    page.addAnnotation(annot)
+                }
+            }
+        }
+        saveDocumentIfPossible()
+        if let page = sel.pages.first, let doc = document, let text = sel.string {
+            let pageIdx = doc.index(for: page)
+            onAddAnnotation?(text.trimmingCharacters(in: .whitespacesAndNewlines), "", "#FF9500", pageIdx)
+        }
+        clearSelection()
+        hideAnnotationBar()
+    }
+    
+    @objc func strikeCurrentSelection() {
+        guard let sel = currentSelection else { return }
+        for page in sel.pages {
+            let lines = sel.selectionsByLine()
+            let targets = lines.isEmpty ? [sel] : lines
+            for lineSel in targets {
+                let bounds = lineSel.bounds(for: page)
+                if bounds.width > 0 && bounds.height > 0 {
+                    let annot = PDFAnnotation(bounds: bounds, forType: .strikeOut, withProperties: nil)
+                    annot.color = NSColor.systemRed
+                    page.addAnnotation(annot)
+                }
+            }
+        }
+        saveDocumentIfPossible()
+        clearSelection()
+        hideAnnotationBar()
+    }
+    
+    private func promptNoteForSelectionOrAnnotation() {
+        let text: String
+        let existingNote: String
+        let pageIdx: Int
+        
+        if let annot = activeAnnotation, let page = activePage, let doc = document {
+            text = annot.contents ?? ""
+            existingNote = annot.contents ?? ""
+            pageIdx = doc.index(for: page)
+        } else if let sel = currentSelection, let page = sel.pages.first, let doc = document {
+            text = sel.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            existingNote = ""
+            pageIdx = doc.index(for: page)
+            // Apply default yellow highlight so the quote stays visually marked
+            applyColorToSelectionOrAnnotation(hex: "#FFE270", color: NSColor(srgbRed: 1.0, green: 0.886, blue: 0.439, alpha: 0.65))
+        } else {
+            return
+        }
+        
+        hideAnnotationBar()
+        onPromptNote?(text, existingNote, "#FFE270", pageIdx)
+    }
+    
+    @objc func copySelectedText() {
+        let str: String
+        if let s = currentSelection?.string, !s.isEmpty {
+            str = s
+        } else if let a = activeAnnotation?.contents, !a.isEmpty {
+            str = a
+        } else {
+            return
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(str, forType: .string)
+        clearSelection()
+        hideAnnotationBar()
+    }
+    
+    func deleteActiveAnnotation() {
+        guard let annot = activeAnnotation, let page = activePage else { return }
+        let text = annot.contents ?? ""
+        page.removeAnnotation(annot)
+        saveDocumentIfPossible()
+        if let doc = document {
+            let pageIdx = doc.index(for: page)
+            onDeleteAnnotation?(text, pageIdx)
+        }
+        hideAnnotationBar()
+    }
+    
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = super.menu(for: event) ?? NSMenu()
         if let sel = self.currentSelection, let selString = sel.string, !selString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             menu.addItem(NSMenuItem.separator())
             
-            let hlMenu = NSMenu(title: "Highlight")
-            let colors: [(String, String, NSColor)] = [
-                ("Yellow", "#FFE270", NSColor(srgbRed: 1.0, green: 0.886, blue: 0.439, alpha: 0.5)),
-                ("Green", "#A8F596", NSColor(srgbRed: 0.659, green: 0.961, blue: 0.588, alpha: 0.5)),
-                ("Blue", "#92D6FF", NSColor(srgbRed: 0.573, green: 0.839, blue: 1.0, alpha: 0.5)),
-                ("Pink", "#FFB3D9", NSColor(srgbRed: 1.0, green: 0.702, blue: 0.851, alpha: 0.5)),
-                ("Purple", "#D2B4FF", NSColor(srgbRed: 0.824, green: 0.706, blue: 1.0, alpha: 0.5))
-            ]
+            let yHl = NSMenuItem(title: "Highlight (Yellow)", action: #selector(highlightYellow), keyEquivalent: "")
+            yHl.target = self
+            menu.addItem(yHl)
             
-            for (name, hex, nsCol) in colors {
-                let item = NSMenuItem(title: "\(name) Highlight", action: #selector(highlightSelectionWithColor(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = ["hex": hex, "color": nsCol]
-                hlMenu.addItem(item)
-            }
+            let gHl = NSMenuItem(title: "Highlight (Green)", action: #selector(highlightGreen), keyEquivalent: "")
+            gHl.target = self
+            menu.addItem(gHl)
             
-            let hlSubmenuItem = NSMenuItem(title: "Highlight", action: nil, keyEquivalent: "")
-            hlSubmenuItem.submenu = hlMenu
-            menu.addItem(hlSubmenuItem)
+            let bHl = NSMenuItem(title: "Highlight (Blue)", action: #selector(highlightBlue), keyEquivalent: "")
+            bHl.target = self
+            menu.addItem(bHl)
             
             let underItem = NSMenuItem(title: "Underline Selection", action: #selector(underlineCurrentSelection), keyEquivalent: "")
             underItem.target = self
@@ -63,9 +461,13 @@ class CustomPDFView: PDFView {
             strikeItem.target = self
             menu.addItem(strikeItem)
             
-            let noteItem = NSMenuItem(title: "Add Note", action: #selector(addNoteToSelection), keyEquivalent: "")
+            let noteItem = NSMenuItem(title: "Add Note...", action: #selector(menuAddNote), keyEquivalent: "")
             noteItem.target = self
             menu.addItem(noteItem)
+            
+            let copyItem = NSMenuItem(title: "Copy Selection", action: #selector(copySelectedText), keyEquivalent: "")
+            copyItem.target = self
+            menu.addItem(copyItem)
         }
         
         menu.addItem(NSMenuItem.separator())
@@ -76,78 +478,8 @@ class CustomPDFView: PDFView {
         return menu
     }
     
-    @objc func highlightSelectionWithColor(_ sender: NSMenuItem) {
-        guard let sel = currentSelection,
-              let dict = sender.representedObject as? [String: Any],
-              let hex = dict["hex"] as? String,
-              let col = dict["color"] as? NSColor else { return }
-        for page in sel.pages {
-            let bounds = sel.bounds(for: page)
-            let annot = PDFAnnotation(bounds: bounds, forType: .highlight, withProperties: nil)
-            annot.color = col
-            page.addAnnotation(annot)
-        }
-        saveDocumentIfPossible()
-        if let page = sel.pages.first, let doc = document, let text = sel.string {
-            let pageIdx = doc.index(for: page)
-            onAddAnnotation?(text.trimmingCharacters(in: .whitespacesAndNewlines), "", hex, pageIdx)
-        }
-    }
-    
-    @objc func highlightCurrentSelection() {
-        guard let sel = currentSelection else { return }
-        for page in sel.pages {
-            let bounds = sel.bounds(for: page)
-            let annot = PDFAnnotation(bounds: bounds, forType: .highlight, withProperties: nil)
-            annot.color = NSColor.systemYellow.withAlphaComponent(0.4)
-            page.addAnnotation(annot)
-        }
-        saveDocumentIfPossible()
-        if let page = sel.pages.first, let doc = document, let text = sel.string {
-            let pageIdx = doc.index(for: page)
-            onAddAnnotation?(text.trimmingCharacters(in: .whitespacesAndNewlines), "", "#FFE270", pageIdx)
-        }
-    }
-    
-    @objc func underlineCurrentSelection() {
-        guard let sel = currentSelection else { return }
-        for page in sel.pages {
-            let bounds = sel.bounds(for: page)
-            let annot = PDFAnnotation(bounds: bounds, forType: .underline, withProperties: nil)
-            annot.color = NSColor.systemOrange
-            page.addAnnotation(annot)
-        }
-        saveDocumentIfPossible()
-        if let page = sel.pages.first, let doc = document, let text = sel.string {
-            let pageIdx = doc.index(for: page)
-            onAddAnnotation?(text.trimmingCharacters(in: .whitespacesAndNewlines), "", "#FF9500", pageIdx)
-        }
-    }
-    
-    @objc func strikeCurrentSelection() {
-        guard let sel = currentSelection else { return }
-        for page in sel.pages {
-            let bounds = sel.bounds(for: page)
-            let annot = PDFAnnotation(bounds: bounds, forType: .strikeOut, withProperties: nil)
-            annot.color = NSColor.systemRed
-            page.addAnnotation(annot)
-        }
-        saveDocumentIfPossible()
-    }
-    
-    @objc func addNoteToSelection() {
-        guard let sel = currentSelection, let page = sel.pages.first else { return }
-        let bounds = sel.bounds(for: page)
-        let noteRect = NSRect(x: bounds.origin.x, y: bounds.origin.y, width: 24, height: 24)
-        let annot = PDFAnnotation(bounds: noteRect, forType: .text, withProperties: nil)
-        annot.contents = "Note"
-        annot.color = NSColor.systemYellow
-        page.addAnnotation(annot)
-        saveDocumentIfPossible()
-        if let doc = document, let text = sel.string {
-            let pageIdx = doc.index(for: page)
-            onAddAnnotation?(text.trimmingCharacters(in: .whitespacesAndNewlines), "Note", "#FFE270", pageIdx)
-        }
+    @objc private func menuAddNote() {
+        promptNoteForSelectionOrAnnotation()
     }
     
     @objc func openInPreview() {
@@ -175,6 +507,8 @@ struct NativePDFKitView: NSViewRepresentable {
     @Binding var activePDFView: PDFView?
     var onPageChange: ((Int, Int) -> Void)? = nil
     var onAddAnnotation: ((String, String, String, Int) -> Void)? = nil
+    var onPromptNote: ((String, String, String, Int) -> Void)? = nil
+    var onDeleteAnnotation: ((String, Int) -> Void)? = nil
     var onMouseActivity: (() -> Void)? = nil
     
     private var resolvedURL: URL {
@@ -213,6 +547,8 @@ struct NativePDFKitView: NSViewRepresentable {
     func makeNSView(context: Context) -> CustomPDFView {
         let pdfView = CustomPDFView()
         pdfView.onAddAnnotation = onAddAnnotation
+        pdfView.onPromptNote = onPromptNote
+        pdfView.onDeleteAnnotation = onDeleteAnnotation
         pdfView.onMouseActivity = onMouseActivity
         if let doc = PDFDocument(url: resolvedURL) {
             pdfView.document = doc
@@ -246,6 +582,8 @@ struct NativePDFKitView: NSViewRepresentable {
     
     func updateNSView(_ pdfView: CustomPDFView, context: Context) {
         pdfView.onAddAnnotation = onAddAnnotation
+        pdfView.onPromptNote = onPromptNote
+        pdfView.onDeleteAnnotation = onDeleteAnnotation
         pdfView.onMouseActivity = onMouseActivity
         
         if pdfView.backgroundColor != themeBackgroundColor {

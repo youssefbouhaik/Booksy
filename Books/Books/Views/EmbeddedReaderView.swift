@@ -63,7 +63,9 @@ struct EmbeddedReaderView: View {
     @State private var newNoteText: String = ""
     @State private var selectedQuoteText: String = ""
     @State private var showAddNoteSheet: Bool = false
+    @State private var activeNoteEditor: NoteEditorState? = nil
     @State private var searchQuery: String = ""
+    @State private var pdfMatchIndex: Int = 0
     @State private var fontSize: Double = 18.0
     @State private var selectedFontFamily: String = "Original"
     @State private var readerTheme: String = "Original" // Original, Quiet, Paper, Bold, Calm, Focus
@@ -345,6 +347,31 @@ struct EmbeddedReaderView: View {
                             self.addAnnotation(text: text, note: note, colorHex: colorHex)
                         }
                     },
+                    onPromptNote: { text, note, colorHex, pageIdx in
+                        DispatchQueue.main.async {
+                            let pNum = pageIdx >= 0 ? (pageIdx + 1) : self.overallCurrentPage
+                            let existing = self.notes.first(where: {
+                                ($0.chapterIndex == pageIdx || $0.pageNumber == pNum) &&
+                                ($0.text == text || text.contains($0.text) || $0.text.contains(text))
+                            })
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                self.activeNoteEditor = NoteEditorState(
+                                    noteId: existing?.id,
+                                    quoteText: text,
+                                    noteText: existing?.note.isEmpty == false ? (existing?.note ?? "") : note,
+                                    colorHex: existing?.colorHex ?? colorHex,
+                                    pageNumber: pNum,
+                                    chapterIndex: pageIdx,
+                                    isPDF: true
+                                )
+                            }
+                        }
+                    },
+                    onDeleteAnnotation: { text, pageIdx in
+                        DispatchQueue.main.async {
+                            self.deleteAnnotationByText(text)
+                        }
+                    },
                     onMouseActivity: {
                         registerMouseActivity()
                     }
@@ -381,12 +408,23 @@ struct EmbeddedReaderView: View {
                             self.addAnnotation(text: text, note: note, colorHex: colorHex)
                         }
                     },
-                    onPromptNote: { text in
+                    onPromptNote: { text, note, colorHex in
                         DispatchQueue.main.async {
-                            self.selectedQuoteText = text
-                            self.newNoteText = ""
-                            self.showAddNoteSheet = true
-                            self.showNotesPopover = true
+                            let existing = self.notes.first(where: {
+                                $0.chapterIndex == self.currentChapterIndex &&
+                                ($0.text == text || text.contains($0.text) || $0.text.contains(text))
+                            })
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                self.activeNoteEditor = NoteEditorState(
+                                    noteId: existing?.id,
+                                    quoteText: text,
+                                    noteText: existing?.note.isEmpty == false ? (existing?.note ?? "") : note,
+                                    colorHex: existing?.colorHex ?? colorHex,
+                                    pageNumber: self.overallCurrentPage,
+                                    chapterIndex: self.currentChapterIndex,
+                                    isPDF: false
+                                )
+                            }
                         }
                     },
                     onDeleteAnnotation: { text in
@@ -655,13 +693,7 @@ struct EmbeddedReaderView: View {
                                         showSearchPopover.toggle()
                                     }
                                     .popover(isPresented: $showSearchPopover) {
-                                        HStack {
-                                            Image(systemName: "magnifyingglass").foregroundColor(.secondary)
-                                            TextField("Search chapter...", text: $searchQuery)
-                                                .textFieldStyle(.plain)
-                                        }
-                                        .padding(10)
-                                        .frame(width: 240)
+                                        searchPopoverView
                                     }
                                 }
                                 .padding(.horizontal, 6)
@@ -919,6 +951,36 @@ struct EmbeddedReaderView: View {
                     }
                     .padding(.bottom, 6)
                 }
+            }
+            
+            // Centered Apple Books-grade Focused Note & Highlight Editor Modal
+            if let editorState = activeNoteEditor {
+                NoteEditorModalView(
+                    state: editorState,
+                    onSave: { quote, note, color in
+                        self.saveNoteFromEditor(state: editorState, quote: quote, note: note, colorHex: color)
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            self.activeNoteEditor = nil
+                        }
+                    },
+                    onDelete: {
+                        if let nid = editorState.noteId {
+                            self.deleteNote(id: nid)
+                        } else if !editorState.quoteText.isEmpty {
+                            self.deleteAnnotationByText(editorState.quoteText)
+                        }
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            self.activeNoteEditor = nil
+                        }
+                    },
+                    onCancel: {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            self.activeNoteEditor = nil
+                        }
+                    }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                .zIndex(99999)
             }
         }
         .frame(minWidth: 860, minHeight: 640)
@@ -1386,7 +1448,17 @@ struct EmbeddedReaderView: View {
                 Spacer()
                 
                 Button(action: {
-                    showAddNoteSheet.toggle()
+                    showNotesPopover = false
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        activeNoteEditor = NoteEditorState(
+                            quoteText: "",
+                            noteText: "",
+                            colorHex: "#FFE270",
+                            pageNumber: overallCurrentPage,
+                            chapterIndex: currentChapterIndex,
+                            isPDF: book.isPDF
+                        )
+                    }
                 }) {
                     Image(systemName: "plus")
                         .font(.system(size: 12, weight: .bold))
@@ -1503,6 +1575,27 @@ struct EmbeddedReaderView: View {
                                         .foregroundColor(.secondary)
                                     
                                     Button(action: {
+                                        showNotesPopover = false
+                                        withAnimation(.easeInOut(duration: 0.18)) {
+                                            activeNoteEditor = NoteEditorState(
+                                                noteId: n.id,
+                                                quoteText: n.text,
+                                                noteText: n.note,
+                                                colorHex: n.colorHex,
+                                                pageNumber: n.pageNumber,
+                                                chapterIndex: n.chapterIndex,
+                                                isPDF: book.isPDF
+                                            )
+                                        }
+                                    }) {
+                                        Image(systemName: "pencil")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary.opacity(0.8))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Edit Note")
+                                    
+                                    Button(action: {
                                         deleteNote(id: n.id)
                                     }) {
                                         Image(systemName: "trash")
@@ -1558,6 +1651,44 @@ struct EmbeddedReaderView: View {
                 .frame(width: 320, height: 360)
             }
         }
+    }
+    
+    // Search Popover
+    var searchPopoverView: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(.secondary)
+            
+            TextField(book.isPDF ? "Search PDF..." : "Search in chapter...", text: $searchQuery)
+                .textFieldStyle(.plain)
+                .onSubmit {
+                    performInBookSearch(backwards: false)
+                }
+            
+            if !searchQuery.isEmpty {
+                Button(action: {
+                    performInBookSearch(backwards: true)
+                }) {
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Previous Match")
+                
+                Button(action: {
+                    performInBookSearch(backwards: false)
+                }) {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Next Match")
+            }
+        }
+        .padding(10)
+        .frame(width: 260)
     }
     
     // 4. Themes & Settings Popover (Screenshot hueuX4)
@@ -1786,6 +1917,30 @@ struct EmbeddedReaderView: View {
         }
     }
     
+    func performInBookSearch(backwards: Bool) {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+        if book.isPDF {
+            guard let pdfView = activePDFView, let doc = pdfView.document else { return }
+            let matches = doc.findString(query, withOptions: [.caseInsensitive])
+            guard !matches.isEmpty else { return }
+            if backwards {
+                pdfMatchIndex = (pdfMatchIndex - 1 + matches.count) % matches.count
+            } else {
+                pdfMatchIndex = (pdfMatchIndex + 1) % matches.count
+            }
+            let sel = matches[pdfMatchIndex]
+            pdfView.setCurrentSelection(sel, animate: true)
+            pdfView.scrollSelectionToVisible(nil)
+        } else {
+            NotificationCenter.default.post(
+                name: NSNotification.Name("BooksyFindInPage"),
+                object: nil,
+                userInfo: ["query": query, "backwards": backwards]
+            )
+        }
+    }
+    
     func updateBookmarkState() {
         self.isBookmarked = bookmarks.contains { isBookmarkForCurrentPage($0) }
     }
@@ -1831,6 +1986,18 @@ struct EmbeddedReaderView: View {
         let bookKey = book.path ?? book.title
         notes.removeAll { $0.chapterIndex == currentChapterIndex && $0.text == text }
         NotesStorage.shared.saveNotes(notes, for: bookKey)
+    }
+    
+    func saveNoteFromEditor(state: NoteEditorState, quote: String, note: String, colorHex: String) {
+        let bookKey = book.path ?? book.title
+        if let nid = state.noteId, let idx = notes.firstIndex(where: { $0.id == nid }) {
+            notes[idx].note = note
+            notes[idx].colorHex = colorHex
+            if !quote.isEmpty { notes[idx].text = quote }
+            NotesStorage.shared.saveNotes(notes, for: bookKey)
+        } else {
+            addAnnotation(text: quote, note: note, colorHex: colorHex)
+        }
     }
     
     func jumpToNote(_ note: NoteItem) {

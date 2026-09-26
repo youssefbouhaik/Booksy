@@ -54,7 +54,7 @@ struct BookWebView: NSViewRepresentable {
     let justifyText: Bool
     var onMouseActivity: (() -> Void)? = nil
     var onAddAnnotation: ((String, String, String) -> Void)? = nil
-    var onPromptNote: ((String) -> Void)? = nil
+    var onPromptNote: ((String, String, String) -> Void)? = nil
     var onDeleteAnnotation: ((String) -> Void)? = nil
     var onVisibleSnippet: ((String) -> Void)? = nil
     let onPageMetrics: (Int, Int, Int) -> Void
@@ -111,7 +111,9 @@ struct BookWebView: NSViewRepresentable {
             } else if message.name == "promptNote" {
                 if let dict = message.body as? [String: Any],
                    let text = dict["text"] as? String {
-                    parent.onPromptNote?(text)
+                    let note = dict["note"] as? String ?? ""
+                    let colorHex = dict["colorHex"] as? String ?? "#FFE270"
+                    parent.onPromptNote?(text, note, colorHex)
                 }
             } else if message.name == "deleteAnnotation" {
                 if let text = message.body as? String {
@@ -133,6 +135,19 @@ struct BookWebView: NSViewRepresentable {
         @objc func viewFrameChanged(_ notification: Notification) {
             guard let wv = webView, wv.bounds.size.width > 50 else { return }
             wv.evaluateJavaScript("if (typeof handleResize === 'function') handleResize();")
+        }
+        
+        @objc func handleFindInPage(_ notification: Notification) {
+            guard let wv = webView,
+                  let dict = notification.userInfo as? [String: Any],
+                  let query = dict["query"] as? String, !query.isEmpty else { return }
+            let backwards = dict["backwards"] as? Bool ?? false
+            let escaped = query
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "'", with: "\\'")
+                .replacingOccurrences(of: "\n", with: "\\n")
+            wv.evaluateJavaScript("window.find('\(escaped)', false, \(backwards), true, false, false, false)")
         }
         
         func saveEditedContent(_ html: String) {
@@ -181,6 +196,13 @@ struct BookWebView: NSViewRepresentable {
             selector: #selector(Coordinator.viewFrameChanged(_:)),
             name: NSView.frameDidChangeNotification,
             object: webView
+        )
+        
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.handleFindInPage(_:)),
+            name: NSNotification.Name("BooksyFindInPage"),
+            object: nil
         )
         
         return webView
@@ -518,28 +540,50 @@ struct BookWebView: NSViewRepresentable {
                 text-decoration-thickness: 2.5px;
                 cursor: pointer;
             }
+            span.booksy-strike {
+                text-decoration: line-through;
+                text-decoration-color: #FF453A;
+                text-decoration-thickness: 2px;
+                cursor: pointer;
+            }
+            mark.booksy-highlight[data-note]::after,
+            span.booksy-underline[data-note]::after,
+            span.booksy-strike[data-note]::after {
+                content: " 📝";
+                font-size: 10px;
+                vertical-align: super;
+                line-height: 0;
+                opacity: 0.9;
+                cursor: pointer;
+            }
         </style>
         </head>
         <body id="book-body" class="\(isEditMode ? "edit-active" : "")">
             <div class="nav-strip-left" onclick="prevSpread()"></div>
             <div class="nav-strip-right" onclick="nextSpread()"></div>
             
-            <div id="booksy-annotation-bar">
-                <div class="booksy-color-chip chip-yellow" title="Yellow" onclick="applyHighlight('#FFE270')"></div>
-                <div class="booksy-color-chip chip-green" title="Green" onclick="applyHighlight('#A8F596')"></div>
-                <div class="booksy-color-chip chip-blue" title="Blue" onclick="applyHighlight('#92D6FF')"></div>
-                <div class="booksy-color-chip chip-pink" title="Pink" onclick="applyHighlight('#FFB3D9')"></div>
-                <div class="booksy-color-chip chip-purple" title="Purple" onclick="applyHighlight('#D2B4FF')"></div>
+            <div id="booksy-annotation-bar" onmousedown="event.preventDefault();">
+                <div class="booksy-color-chip chip-yellow" title="Yellow" onmousedown="event.preventDefault();" onclick="applyHighlight('#FFE270')"></div>
+                <div class="booksy-color-chip chip-green" title="Green" onmousedown="event.preventDefault();" onclick="applyHighlight('#A8F596')"></div>
+                <div class="booksy-color-chip chip-blue" title="Blue" onmousedown="event.preventDefault();" onclick="applyHighlight('#92D6FF')"></div>
+                <div class="booksy-color-chip chip-pink" title="Pink" onmousedown="event.preventDefault();" onclick="applyHighlight('#FFB3D9')"></div>
+                <div class="booksy-color-chip chip-purple" title="Purple" onmousedown="event.preventDefault();" onclick="applyHighlight('#D2B4FF')"></div>
                 <div class="booksy-divider"></div>
-                <button class="booksy-tool-btn" title="Underline" onclick="applyUnderline()">
+                <button class="booksy-tool-btn" title="Underline" onmousedown="event.preventDefault();" onclick="applyUnderline()">
                     <span style="text-decoration: underline; font-weight: bold; font-family: serif; font-size: 13px;">U</span>
                 </button>
-                <button class="booksy-tool-btn" title="Add Note" onclick="promptAddNote()">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-                    <span style="margin-left: 4px;">Note</span>
+                <button class="booksy-tool-btn" title="Strikethrough" onmousedown="event.preventDefault();" onclick="applyStrikethrough()">
+                    <span style="text-decoration: line-through; font-weight: bold; font-family: serif; font-size: 13px;">S</span>
                 </button>
-                <button id="booksy-delete-btn" class="booksy-tool-btn" title="Delete Highlight" style="display: none;" onclick="deleteActiveHighlight()">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                <button class="booksy-tool-btn" title="Add Note" onmousedown="event.preventDefault();" onclick="promptAddNote()">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                    <span style="margin-left: 3px;">Note</span>
+                </button>
+                <button class="booksy-tool-btn" title="Copy Text" onmousedown="event.preventDefault();" onclick="copySelectionText()">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                </button>
+                <button id="booksy-delete-btn" class="booksy-tool-btn" title="Delete Highlight" style="display: none;" onmousedown="event.preventDefault();" onclick="deleteActiveHighlight()">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#FF453A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 </button>
             </div>
             
@@ -808,10 +852,82 @@ struct BookWebView: NSViewRepresentable {
                     }
                 }
                 
+                function applyStrikethrough() {
+                    if (activeTargetHighlight) {
+                        activeTargetHighlight.style.backgroundColor = 'transparent';
+                        activeTargetHighlight.style.textDecoration = 'line-through';
+                        activeTargetHighlight.style.textDecorationColor = '#FF453A';
+                        activeTargetHighlight.style.textDecorationThickness = '2px';
+                        activeTargetHighlight.setAttribute('data-color', '#FF453A');
+                        const text = activeTargetHighlight.getAttribute('data-text') || activeTargetHighlight.textContent;
+                        hideAnnotationBar();
+                        if (window.webkit && window.webkit.messageHandlers.createAnnotation) {
+                            window.webkit.messageHandlers.createAnnotation.postMessage({
+                                text: text,
+                                colorHex: '#FF453A',
+                                note: ""
+                            });
+                        }
+                        return;
+                    }
+                    const sel = window.getSelection();
+                    if (!sel || sel.rangeCount === 0) return;
+                    const range = sel.getRangeAt(0);
+                    const selectedText = sel.toString().trim();
+                    if (!selectedText) return;
+                    
+                    try {
+                        const span = document.createElement('span');
+                        span.className = 'booksy-strike';
+                        span.setAttribute('data-color', '#FF453A');
+                        span.setAttribute('data-text', selectedText);
+                        span.style.textDecoration = 'line-through';
+                        span.style.textDecorationColor = '#FF453A';
+                        span.style.textDecorationThickness = '2px';
+                        span.style.cursor = 'pointer';
+                        span.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            showHighlightActions(span);
+                        });
+                        const fragment = range.extractContents();
+                        span.appendChild(fragment);
+                        range.insertNode(span);
+                        sel.removeAllRanges();
+                        hideAnnotationBar();
+                        if (window.webkit && window.webkit.messageHandlers.createAnnotation) {
+                            window.webkit.messageHandlers.createAnnotation.postMessage({
+                                text: selectedText,
+                                colorHex: '#FF453A',
+                                note: ""
+                            });
+                        }
+                    } catch(err) {
+                        console.error("Strike error:", err);
+                    }
+                }
+                
+                function copySelectionText() {
+                    let textToCopy = "";
+                    if (activeTargetHighlight) {
+                        textToCopy = activeTargetHighlight.getAttribute('data-text') || activeTargetHighlight.textContent;
+                    } else {
+                        const sel = window.getSelection();
+                        if (sel) textToCopy = sel.toString().trim();
+                    }
+                    if (textToCopy) {
+                        navigator.clipboard.writeText(textToCopy);
+                    }
+                    hideAnnotationBar();
+                }
+                
                 function promptAddNote() {
                     let textToNote = "";
+                    let colorHex = "#FFE270";
+                    let existingNote = "";
                     if (activeTargetHighlight) {
                         textToNote = activeTargetHighlight.getAttribute('data-text') || activeTargetHighlight.textContent;
+                        colorHex = activeTargetHighlight.getAttribute('data-color') || "#FFE270";
+                        existingNote = activeTargetHighlight.getAttribute('data-note') || "";
                     } else {
                         const sel = window.getSelection();
                         if (sel && sel.rangeCount > 0) {
@@ -823,7 +939,8 @@ struct BookWebView: NSViewRepresentable {
                     if (textToNote && window.webkit && window.webkit.messageHandlers.promptNote) {
                         window.webkit.messageHandlers.promptNote.postMessage({
                             text: textToNote,
-                            colorHex: '#FFE270'
+                            colorHex: colorHex,
+                            note: existingNote
                         });
                     }
                 }
@@ -867,7 +984,10 @@ struct BookWebView: NSViewRepresentable {
                                     mark.style.padding = '1px 2px';
                                     mark.style.cursor = 'pointer';
                                 }
-                                if (note) mark.setAttribute('title', note);
+                                if (note && note.trim().length > 0) {
+                                    mark.setAttribute('data-note', note);
+                                    mark.setAttribute('title', note);
+                                }
                                 mark.addEventListener('click', function(e) {
                                     e.stopPropagation();
                                     showHighlightActions(mark);
